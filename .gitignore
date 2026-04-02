@@ -1,0 +1,18 @@
+# Build artifacts
+.build/
+.swiftpm/
+DerivedData/
+
+# macOS
+.DS_Store
+*.xcuserstate
+
+# Discovery/verification scripts and blobs (development tools, not app code)
+thd75_*.py
+thd75_*.bin
+thd75_*.log
+find_port.py
+
+# Backup files
+*.bak
+thd75_hunt_originals.txt
