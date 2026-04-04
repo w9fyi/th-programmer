@@ -15,6 +15,7 @@ final class MMDVMBridge: @unchecked Sendable {
         case probing
         case ready
         case bridging
+        case reconnecting(attempt: Int)
         case error(String)
     }
 
@@ -35,7 +36,7 @@ final class MMDVMBridge: @unchecked Sendable {
 
     private(set) var firmwareVersion: String?
 
-    private let transport: MMDVMSerialTransport
+    private let transport: any MMDVMTransport
     private let parser = MMDVMParser()
     private var reflectorClient: ReflectorClientProtocol?
     private let bridgeQueue = DispatchQueue(label: "com.th-programmer.mmdvm-bridge", qos: .userInteractive)
@@ -56,9 +57,27 @@ final class MMDVMBridge: @unchecked Sendable {
     /// Current probe attempt counter.
     private var probeRetryCount = 0
 
+    /// Port used for the current/last connection (needed for reconnect).
+    private var lastPort: RadioSerialPort?
+
+    /// Current reconnect attempt (0 = not reconnecting).
+    private var reconnectAttempt = 0
+
+    /// Maximum reconnect attempts before giving up.
+    private static let maxReconnectAttempts = 10
+
+    /// Whether the user explicitly stopped (suppresses reconnect).
+    private var userStopped = false
+
+    /// Periodic GET_STATUS timer to keep the MMDVM/RFCOMM connection alive.
+    private var keepaliveTimer: DispatchSourceTimer?
+
+    /// Keepalive interval — send GET_STATUS every 5 seconds.
+    private static let keepaliveInterval: TimeInterval = 5.0
+
     // MARK: - Init
 
-    init(transport: MMDVMSerialTransport) {
+    init(transport: any MMDVMTransport) {
         self.transport = transport
     }
 
@@ -68,11 +87,27 @@ final class MMDVMBridge: @unchecked Sendable {
     func start(port: RadioSerialPort) throws {
         parser.reset()
         probeRetryCount = 0
+        reconnectAttempt = 0
+        userStopped = false
+        lastPort = port
         state = .probing
 
         transport.onDataReceived = { [weak self] data in
             self?.bridgeQueue.async {
                 self?.handleSerialData(data)
+            }
+        }
+
+        // Detect transport disconnect and trigger reconnect
+        transport.onStateChange = { [weak self] transportState in
+            self?.bridgeQueue.async {
+                guard let self else { return }
+                if case .error = transportState, !self.userStopped {
+                    self.attemptReconnect()
+                } else if case .disconnected = transportState,
+                          self.state != .idle, !self.userStopped {
+                    self.attemptReconnect()
+                }
             }
         }
 
@@ -157,16 +192,97 @@ final class MMDVMBridge: @unchecked Sendable {
 
     /// Stop everything — close serial and detach reflector.
     func stop() {
+        userStopped = true
+        stopKeepalive()
         detachReflector()
         transport.close()
         parser.reset()
         firmwareVersion = nil
+        reconnectAttempt = 0
+        lastPort = nil
         state = .idle
+    }
+
+    // MARK: - Keepalive
+
+    /// Start periodic GET_STATUS to keep the MMDVM/RFCOMM connection alive.
+    private func startKeepalive() {
+        stopKeepalive()
+        let timer = DispatchSource.makeTimerSource(queue: bridgeQueue)
+        timer.schedule(
+            deadline: .now() + Self.keepaliveInterval,
+            repeating: Self.keepaliveInterval
+        )
+        timer.setEventHandler { [weak self] in
+            guard let self, self.state == .ready || self.state == .bridging else { return }
+            do {
+                try self.transport.send(MMDVMProtocol.buildGetStatus())
+            } catch {
+                self.onError?("Keepalive send failed: \(error.localizedDescription)")
+            }
+        }
+        keepaliveTimer = timer
+        timer.resume()
+    }
+
+    private func stopKeepalive() {
+        keepaliveTimer?.cancel()
+        keepaliveTimer = nil
+    }
+
+    // MARK: - Reconnect
+
+    /// Attempt to reconnect with exponential backoff (1s → 2s → 4s … max 30s).
+    private func attemptReconnect() {
+        // Don't reconnect if already connected and working
+        guard !userStopped, let port = lastPort else { return }
+        guard state != .ready && state != .bridging else {
+            onError?("Reconnect suppressed — already in \(state)")
+            return
+        }
+
+        reconnectAttempt += 1
+        if reconnectAttempt > Self.maxReconnectAttempts {
+            state = .error("Reconnect failed after \(Self.maxReconnectAttempts) attempts")
+            onError?("Giving up reconnect after \(Self.maxReconnectAttempts) attempts.")
+            return
+        }
+
+        let delay = min(Double(1 << (reconnectAttempt - 1)), 30.0)  // 1, 2, 4, 8, 16, 30, 30…
+        state = .reconnecting(attempt: reconnectAttempt)
+        onError?("Bluetooth disconnected — reconnect attempt \(reconnectAttempt)/\(Self.maxReconnectAttempts) in \(Int(delay))s…")
+
+        bridgeQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, !self.userStopped else { return }
+
+            self.parser.reset()
+            self.probeRetryCount = 0
+            self.state = .probing
+
+            do {
+                try self.transport.open(port: port)
+                try? self.transport.setDTR(true)
+                self.bridgeQueue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.sendProbe()
+                }
+                // Probe timeout — if no response, trigger another reconnect
+                self.bridgeQueue.asyncAfter(deadline: .now() + Self.probeTimeout) { [weak self] in
+                    guard let self, self.state == .probing, !self.userStopped else { return }
+                    self.onError?("Probe timed out during reconnect attempt \(self.reconnectAttempt)")
+                    self.attemptReconnect()
+                }
+            } catch {
+                self.onError?("Reconnect open failed: \(error.localizedDescription)")
+                self.attemptReconnect()
+            }
+        }
     }
 
     // MARK: - Serial Data Handling (radio → app)
 
     private func handleSerialData(_ data: Data) {
+        let hex = data.prefix(20).map { String(format: "%02X", $0) }.joined(separator: " ")
+        onError?("RFCOMM rx: \(data.count)b [\(hex)]")
         let frames = parser.feed(data)
         for frame in frames {
             handleParsedFrame(frame)
@@ -178,7 +294,6 @@ final class MMDVMBridge: @unchecked Sendable {
         case .version(let version):
             firmwareVersion = version
             if state == .probing {
-                // Got version — now configure the modem for D-STAR mode
                 onError?("Firmware: \(version) — configuring D-STAR mode…")
                 do {
                     try transport.send(MMDVMProtocol.buildSetConfig())
@@ -186,35 +301,36 @@ final class MMDVMBridge: @unchecked Sendable {
                 } catch {
                     onError?("Config send failed: \(error.localizedDescription)")
                 }
+                reconnectAttempt = 0
                 state = .ready
+                startKeepalive()
             }
 
         case .ack:
-            // Modem acknowledged a command
-            break
+            onError?("MMDVM ACK")
 
         case .nak(let reason):
             onError?("MMDVM NAK: reason \(String(format: "0x%02X", reason))")
 
         case .status:
-            // Status update — could parse modem mode flags
-            break
+            onError?("MMDVM STATUS")
 
         case .dstarHeader(let payload):
+            onError?("MMDVM rx D-STAR HEADER (\(payload.count)b)")
             handleRadioHeader(payload)
 
         case .dstarVoice(let payload):
             handleRadioVoice(payload)
 
         case .dstarEOT:
+            onError?("MMDVM rx D-STAR EOT")
             handleRadioEOT()
 
         case .dstarLost:
-            // Frame lost — could log but no action needed
-            break
+            onError?("MMDVM rx D-STAR LOST")
 
         case .unknown:
-            break
+            onError?("MMDVM rx UNKNOWN frame")
         }
     }
 
@@ -268,7 +384,15 @@ final class MMDVMBridge: @unchecked Sendable {
 
     /// Send a D-STAR header to the radio so it knows a new transmission is starting.
     /// Without this, the radio ignores voice frames.
+    /// Deduplicated: only sends the first header per RX stream.
     private func sendHeaderToRadio(callsign: String) {
+        // Guard against duplicate headers — reflectors repeat headers for reliability
+        // but the radio only needs one.
+        if currentRXStreamID != nil {
+            return  // already sent header for this stream
+        }
+        currentRXStreamID = 1  // mark as "header sent" (actual stream ID doesn't matter here)
+
         let headerFrame = MMDVMProtocol.buildDStarHeader(
             myCallsign: callsign,
             yourCallsign: "CQCQCQ  ",
@@ -285,7 +409,25 @@ final class MMDVMBridge: @unchecked Sendable {
 
     private var networkFrameCount = 0
 
+    /// Timestamp of last voice frame sent to radio — used for 20ms pacing.
+    private var lastFrameSendTime: UInt64 = 0
+
+    /// 20ms in nanoseconds for voice frame pacing.
+    private static let framePacingNanos: UInt64 = 20_000_000
+
     private func handleNetworkVoiceFrame(_ frame: DVFrame) {
+        // Pace voice frames at 20ms intervals — the radio expects steady timing.
+        // Network packets arrive in bursts; without pacing the radio drops frames.
+        let now = DispatchTime.now().uptimeNanoseconds
+        if lastFrameSendTime > 0 {
+            let elapsed = now - lastFrameSendTime
+            if elapsed < Self.framePacingNanos {
+                let sleepNanos = Self.framePacingNanos - elapsed
+                Thread.sleep(forTimeInterval: Double(sleepNanos) / 1_000_000_000.0)
+            }
+        }
+        lastFrameSendTime = DispatchTime.now().uptimeNanoseconds
+
         // Convert DVFrame to MMDVM serial frame and send to radio
         let mmdvmFrame = frame.toMMDVM()
         networkFrameCount += 1
@@ -303,6 +445,8 @@ final class MMDVMBridge: @unchecked Sendable {
         if frame.isLastFrame {
             onError?("EOT → radio (total \(networkFrameCount) frames)")
             networkFrameCount = 0
+            currentRXStreamID = nil  // reset so next transmission gets a fresh header
+            lastFrameSendTime = 0    // reset pacing for next transmission
             let eotFrame = MMDVMProtocol.buildDStarEOT()
             do {
                 try transport.send(eotFrame)

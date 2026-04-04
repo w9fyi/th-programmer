@@ -62,7 +62,17 @@ final class ReflectorStore: ObservableObject {
     @Published var mmdvmState: MMDVMBridge.BridgeState = .idle
     @Published var mmdvmFirmwareVersion: String?
 
+    /// The Bluetooth radio selected for direct RFCOMM transport (nil = use serial port).
+    @Published var selectedBluetoothRadio: BluetoothRadio?
+
+    /// Whether the current MMDVM connection uses direct RFCOMM (true) or serial port (false).
+    @Published private(set) var isDirectRFCOMM: Bool = false
+
     // MARK: - Internal Components
+
+    /// App Nap prevention token — keeps the process at full priority during
+    /// active gateway operation so 20ms voice frame pacing isn't disrupted.
+    private var appNapActivity: NSObjectProtocol?
 
     private var reflectorClient: ReflectorClientProtocol?
     private let codec = AMBECodec()
@@ -72,8 +82,8 @@ final class ReflectorStore: ObservableObject {
     private let hostLookup = ReflectorHostLookup.shared
     private let codecQueue = DispatchQueue(label: "com.th-programmer.reflector-codec", qos: .userInteractive)
 
-    // MMDVM components (legacy — kept for non-TH-D75 MMDVM modems)
-    private var mmdvmTransport: MMDVMSerialTransport?
+    // MMDVM components
+    private var mmdvmTransport: (any MMDVMTransport)?
     private var mmdvmBridge: MMDVMBridge?
 
     // Terminal mode client (TH-D75 in Reflector TERM Mode)
@@ -115,6 +125,7 @@ final class ReflectorStore: ObservableObject {
         bluetoothManager.onRadioConnected = { [weak self] radio in
             Task { @MainActor in
                 guard let self else { return }
+                self.selectedBluetoothRadio = radio
                 self.refreshDevices()
                 if self.audioSourceMode == .radioBluetooth, self.radioBluetoothAvailable {
                     self.applyAudioSourceMode(.radioBluetooth)
@@ -210,12 +221,15 @@ final class ReflectorStore: ObservableObject {
     }
 
     func connectBluetooth(_ radio: BluetoothRadio) {
+        // Store the radio for direct RFCOMM transport selection
+        selectedBluetoothRadio = radio
+
         Task {
             let path = await bluetoothManager.connect(radio)
             refreshDevices()
             // Refresh serial ports so the new BT port appears in the MMDVM picker
             refreshSerialPorts()
-            // Auto-select the new BT port if one appeared
+            // Auto-select the new BT port if one appeared (fallback if direct RFCOMM fails)
             if let path, selectedSerialPort == nil {
                 selectedSerialPort = availableSerialPorts.first { $0.path == path }
             }
@@ -252,15 +266,74 @@ final class ReflectorStore: ObservableObject {
     // MARK: - MMDVM Connect / Disconnect
 
     func connectMMDVM() {
-        guard let port = selectedSerialPort else {
-            errorMessage = "No serial port selected"
+        // Diagnostic log to Desktop
+        let logPath = "/Users/justinmann/Desktop/rfcomm_connect.log"
+        func diagLog(_ msg: String) {
+            let line = "\(ISO8601DateFormatter().string(from: Date())) \(msg)\n"
+            if let data = line.data(using: .utf8) {
+                if FileManager.default.fileExists(atPath: logPath) {
+                    if let h = FileHandle(forWritingAtPath: logPath) {
+                        h.seekToEndOfFile(); h.write(data); h.closeFile()
+                    }
+                } else {
+                    FileManager.default.createFile(atPath: logPath, contents: data)
+                }
+            }
+        }
+
+        // Stop any existing bridge before creating a new one
+        mmdvmBridge?.stop()
+        mmdvmBridge = nil
+        mmdvmTransport = nil
+
+        diagLog("=== connectMMDVM() called ===")
+        diagLog("selectedBluetoothRadio: \(selectedBluetoothRadio?.name ?? "nil") addr=\(selectedBluetoothRadio?.addressString ?? "nil")")
+        diagLog("bluetoothManager.radios count: \(bluetoothManager.radios.count)")
+        for (i, r) in bluetoothManager.radios.enumerated() {
+            diagLog("  radio[\(i)]: \(r.name) addr=\(r.addressString) connected=\(r.isConnected) port=\(r.portPath ?? "nil")")
+        }
+        diagLog("selectedSerialPort: \(selectedSerialPort?.path ?? "nil")")
+
+        // Choose transport: direct RFCOMM for Bluetooth, POSIX serial for USB
+        let transport: any MMDVMTransport
+        let port: RadioSerialPort
+        let useDirectRFCOMM: Bool
+
+        // If no BT radio explicitly selected, auto-select the first paired one
+        if selectedBluetoothRadio == nil,
+           let firstPaired = bluetoothManager.radios.first {
+            selectedBluetoothRadio = firstPaired
+            diagLog("Auto-selected BT radio: \(firstPaired.name) addr=\(firstPaired.addressString)")
+        }
+
+        if let btRadio = selectedBluetoothRadio,
+           btRadio.addressString != "detected-from-dev" {
+            diagLog("Taking DIRECT RFCOMM path for \(btRadio.addressString)")
+            // Release BluetoothManager's held RFCOMM channel first —
+            // the radio only supports one RFCOMM session at a time.
+            bluetoothManager.releaseRFCOMMChannel()
+
+            // Direct RFCOMM — bypass virtual serial port
+            let rfcomm = RFCOMMTransport(address: btRadio.addressString)
+            transport = rfcomm
+            port = rfcomm.syntheticPort
+            useDirectRFCOMM = true
+        } else if let serialPort = selectedSerialPort {
+            diagLog("Taking SERIAL PORT path: \(serialPort.path)")
+            // POSIX serial — USB CDC or fallback BT serial port
+            transport = MMDVMSerialTransport()
+            port = serialPort
+            useDirectRFCOMM = false
+        } else {
+            diagLog("ERROR: No serial port or Bluetooth radio available")
+            errorMessage = "No serial port or Bluetooth radio selected"
             return
         }
 
-        let transport = MMDVMSerialTransport()
         let bridge = MMDVMBridge(transport: transport)
 
         bridge.onStateChange = { [weak self] newState in
+            diagLog("Bridge state: \(newState)")
             Task { @MainActor in
                 guard let self else { return }
                 self.mmdvmState = newState
@@ -277,6 +350,9 @@ final class ReflectorStore: ObservableObject {
                     self.errorMessage = msg
                     self.statusMessage = msg
                     self.announceAccessibility(msg)
+                case .reconnecting(let attempt):
+                    self.statusMessage = "Reconnecting to radio (\(attempt)/10)…"
+                    self.announceAccessibility("Reconnecting to radio, attempt \(attempt)")
                 case .idle, .probing:
                     break
                 }
@@ -290,6 +366,7 @@ final class ReflectorStore: ObservableObject {
         }
 
         bridge.onError = { [weak self] message in
+            diagLog("Bridge error: \(message)")
             Task { @MainActor in
                 self?.connectionLog.append("[mmdvm] \(message)")
             }
@@ -297,17 +374,31 @@ final class ReflectorStore: ObservableObject {
 
         self.mmdvmTransport = transport
         self.mmdvmBridge = bridge
+        self.isDirectRFCOMM = useDirectRFCOMM
 
-        statusMessage = "Connecting to radio on \(port.displayName)…"
-        connectionLog.append("Opening \(port.path) at 38400 baud (MMDVM protocol)")
-        announceAccessibility("Connecting to radio on \(port.displayName)")
+        if useDirectRFCOMM {
+            statusMessage = "Connecting via direct RFCOMM to \(port.displayName)…"
+            connectionLog.append("Opening direct RFCOMM channel 2 to \(port.displayName)")
+        } else {
+            statusMessage = "Connecting to radio on \(port.displayName)…"
+            connectionLog.append("Opening \(port.path) at 38400 baud (MMDVM protocol)")
+        }
+        announceAccessibility(statusMessage)
 
-        do {
-            try bridge.start(port: port)
-        } catch {
-            errorMessage = "Failed to open serial port: \(error.localizedDescription)"
-            self.mmdvmTransport = nil
-            self.mmdvmBridge = nil
+        // Run on a background thread — IOBluetooth needs the main run loop
+        // free to process Bluetooth events during openConnection/openRFCOMMChannelSync.
+        let startPort = port
+        let startBridge = bridge
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                try startBridge.start(port: startPort)
+            } catch {
+                Task { @MainActor in
+                    self?.errorMessage = "Failed to connect: \(error.localizedDescription)"
+                    self?.mmdvmTransport = nil
+                    self?.mmdvmBridge = nil
+                }
+            }
         }
     }
 
@@ -315,6 +406,8 @@ final class ReflectorStore: ObservableObject {
         mmdvmBridge?.stop()
         mmdvmBridge = nil
         mmdvmTransport = nil
+        isDirectRFCOMM = false
+        selectedBluetoothRadio = nil
         terminalModeClient?.disconnect()
         terminalModeClient = nil
         mmdvmState = .idle
@@ -541,6 +634,12 @@ final class ReflectorStore: ObservableObject {
                     self.statusMessage = "Connected"
                     self.announceAccessibility("Connected to reflector")
 
+                    // Prevent App Nap from throttling voice frame pacing
+                    self.appNapActivity = ProcessInfo.processInfo.beginActivity(
+                        options: [.userInitiated, .latencyCritical],
+                        reason: "D-STAR reflector gateway — 20ms voice frame pacing"
+                    )
+
                     if self.gatewayMode == .mmdvmTerminal {
                         // Attach reflector to MMDVM bridge
                         self.mmdvmBridge?.attachReflector(client)
@@ -556,6 +655,9 @@ final class ReflectorStore: ObservableObject {
                     self.connectedReflector = nil
                     self.currentRXStreamID = nil
                     self.reflectorClient = nil
+
+                    // Allow App Nap again
+                    self.appNapActivity = nil
                     if self.gatewayMode == .software {
                         self.audioEngine.stopPlayback()
                         self.audioEngine.teardownCaptureEngine()

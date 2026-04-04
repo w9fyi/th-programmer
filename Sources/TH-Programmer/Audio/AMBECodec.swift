@@ -1,7 +1,9 @@
 // AMBECodec.swift — Swift wrapper around mbelib for AMBE 3600x2450 (D-STAR) codec
 
 import Foundation
+#if canImport(mbelib)
 import mbelib
+#endif
 
 /// Decodes and encodes AMBE 3600x2450 voice frames used by D-STAR.
 /// Each frame is 9 bytes (72 bits) of AMBE data → 160 PCM samples (20ms @ 8kHz).

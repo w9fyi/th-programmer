@@ -41,7 +41,17 @@ final class BluetoothManager: NSObject, ObservableObject {
 
     /// Keep RFCOMM channel alive so the virtual serial port persists.
     /// If this is released, macOS may tear down /dev/cu.TH-D75.
-    private var rfcommChannel: IOBluetoothRFCOMMChannel?
+    private(set) var rfcommChannel: IOBluetoothRFCOMMChannel?
+
+    /// Release the held RFCOMM channel so RFCOMMTransport can open channel 2 directly.
+    /// Called before direct RFCOMM MMDVM connection — the virtual serial port may disappear.
+    func releaseRFCOMMChannel() {
+        if let ch = rfcommChannel {
+            _ = ch.close()
+            ch.setDelegate(nil)
+        }
+        rfcommChannel = nil
+    }
 
     nonisolated deinit {}
 
@@ -83,6 +93,7 @@ final class BluetoothManager: NSObject, ObservableObject {
 
     /// Check /dev/ for existing TH-D74/D75 Bluetooth serial ports.
     /// This works even without IOBluetooth TCC permission.
+    /// Uses system_profiler to get the real MAC address for direct RFCOMM.
     private func detectRadioFromDevPorts() -> BluetoothRadio? {
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: "/dev") else {
             return nil
@@ -99,12 +110,66 @@ final class BluetoothManager: NSObject, ObservableObject {
         let path = "/dev/\(btPort)"
         let name = btPort.contains("D75") || btPort.contains("d75") ? "TH-D75" : "TH-D74"
 
+        // Try to get the real MAC address from system_profiler
+        // (IOBluetooth TCC may be blocked by ad-hoc signing, but system_profiler works)
+        let address = Self.macAddressFromSystemProfiler(radioName: name) ?? "detected-from-dev"
+
         return BluetoothRadio(
             name: name,
-            addressString: "detected-from-dev",
+            addressString: address,
             isConnected: true,
             portPath: path
         )
+    }
+
+    /// Query system_profiler for the Bluetooth MAC address of a paired radio.
+    nonisolated static func macAddressFromSystemProfiler(radioName: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
+        process.arguments = ["SPBluetoothDataType"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        guard let data = try? pipe.fileHandleForReading.readDataToEndOfFile(),
+              let output = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        // Parse: look for radioName followed by "Address: XX:XX:XX:XX:XX:XX"
+        let lines = output.components(separatedBy: "\n")
+        var foundRadio = false
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix(radioName) && trimmed.hasSuffix(":") {
+                foundRadio = true
+                continue
+            }
+            if foundRadio && trimmed.hasPrefix("Address:") {
+                let addr = trimmed
+                    .replacingOccurrences(of: "Address:", with: "")
+                    .trimmingCharacters(in: .whitespaces)
+                if addr.contains(":") && addr.count >= 17 {
+                    return addr
+                }
+            }
+            // Stop if we hit another device entry
+            if foundRadio && !trimmed.hasPrefix("Address") && !trimmed.isEmpty
+                && !trimmed.hasPrefix("Minor") && !trimmed.hasPrefix("RSSI")
+                && !trimmed.hasPrefix("Services") && !trimmed.hasPrefix("Vendor")
+                && !trimmed.hasPrefix("Product") && !trimmed.hasPrefix("Firmware")
+                && !trimmed.hasPrefix(radioName) {
+                break
+            }
+        }
+        return nil
     }
 
     /// Register for IOBluetooth connection notifications so we detect a paired
@@ -147,7 +212,15 @@ final class BluetoothManager: NSObject, ObservableObject {
             return nil
         }
 
-        // Step 1: Open ACL connection if not already connected
+        // Step 1: Open ACL connection if not already connected.
+        // If device reports connected but no serial port exists, the baseband
+        // connection is stale (radio was power-cycled). Close it first.
+        if device.isConnected() && findPort(for: device) == nil {
+            connectStatus = "Closing stale Bluetooth connection…"
+            device.closeConnection()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+
         if !device.isConnected() {
             connectStatus = "Opening Bluetooth connection…"
             let result = device.openConnection()
@@ -223,19 +296,31 @@ final class BluetoothManager: NSObject, ObservableObject {
             }
         }
 
-        // If still no SPP record found, try common default channel IDs
+        // If still no SPP record found, use channel 2 — the TH-D75 uses
+        // RFCOMM channel 2 for its data connection (confirmed via d75link binary).
         if !foundChannel {
-            // Channel 1 is the most common default for SPP
-            channelID = 1
+            channelID = 2
         }
 
         // Open the RFCOMM channel
         var channel: IOBluetoothRFCOMMChannel?
-        let openResult = device.openRFCOMMChannelSync(
+        var openResult = device.openRFCOMMChannelSync(
             &channel,
             withChannelID: channelID,
             delegate: nil
         )
+
+        // If we get NotPermitted, the macOS TCC Bluetooth permission prompt
+        // may be showing. Wait 1s for the user to click Allow, then retry once.
+        if openResult != kIOReturnSuccess && openResult == IOReturn(kIOReturnNotPermitted) {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            channel = nil
+            openResult = device.openRFCOMMChannelSync(
+                &channel,
+                withChannelID: channelID,
+                delegate: nil
+            )
+        }
 
         if openResult == kIOReturnSuccess, let channel {
             await MainActor.run {

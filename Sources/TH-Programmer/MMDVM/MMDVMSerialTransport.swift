@@ -5,22 +5,13 @@ import Darwin
 
 /// POSIX serial transport for communicating with MMDVM devices (TH-D75 in terminal mode).
 /// 38400 baud, 8N1, raw mode — the TH-D75 uses 38400 (not 115200 like standard MMDVM modems).
-final class MMDVMSerialTransport: @unchecked Sendable {
+final class MMDVMSerialTransport: MMDVMTransport, @unchecked Sendable {
 
     nonisolated deinit {}
 
-    // MARK: - Connection State
-
-    enum ConnectionState: Equatable, Sendable {
-        case disconnected
-        case connecting(String)
-        case connected(String)
-        case error(String)
-    }
-
     // MARK: - Callbacks
 
-    var onStateChange: (@Sendable (ConnectionState) -> Void)?
+    var onStateChange: (@Sendable (MMDVMTransportState) -> Void)?
     var onDataReceived: (@Sendable (Data) -> Void)?
 
     // MARK: - Internal

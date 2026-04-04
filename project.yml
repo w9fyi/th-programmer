@@ -1,0 +1,75 @@
+name: TH-Programmer
+options:
+  bundleIdPrefix: com.ai5os
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.3"
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+targets:
+  TH-Programmer:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/TH-Programmer
+        excludes:
+          - BridgingHeader.h
+      - path: Sources/mbelib
+        headerVisibility: project
+        compilerFlags:
+          - "-w"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ai5os.th-programmer
+        PRODUCT_NAME: TH-Programmer
+        INFOPLIST_FILE: ""
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: TH-Programmer
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "TH-Programmer uses Bluetooth to communicate with your Kenwood TH-D75 radio."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "TH-Programmer uses the microphone for D-STAR voice transmission in software codec mode."
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "TH-Programmer connects to D-STAR reflector servers over the network."
+        CODE_SIGN_ENTITLEMENTS: TH-Programmer.entitlements
+        CODE_SIGN_IDENTITY: "-"
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/TH-Programmer/BridgingHeader.h
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/Sources/mbelib
+          - $(PROJECT_DIR)/Sources/mbelib/include
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        Release:
+          SWIFT_COMPILATION_MODE: wholemodule
+    dependencies: []
+    preBuildScripts: []
+    scheme:
+      testTargets:
+        - TH-ProgrammerTests
+    frameworks:
+      - sdk: IOKit.framework
+      - sdk: CoreFoundation.framework
+      - sdk: IOBluetooth.framework
+      - sdk: AVFoundation.framework
+      - sdk: AudioToolbox.framework
+
+  TH-ProgrammerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/TH-ProgrammerTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ai5os.th-programmer-tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/TH-Programmer.app/Contents/MacOS/TH-Programmer"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        HEADER_SEARCH_PATHS:
+          - $(PROJECT_DIR)/Sources/mbelib
+          - $(PROJECT_DIR)/Sources/mbelib/include
+    dependencies:
+      - target: TH-Programmer

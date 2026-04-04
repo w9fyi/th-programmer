@@ -144,9 +144,11 @@ enum MMDVMProtocol {
         payload[36] = 0x20
         payload[37] = 0x20
         payload[38] = 0x20
-        // Bytes 39-40: CRC (zero for now)
-        payload[39] = 0x00
-        payload[40] = 0x00
+
+        // Bytes 39-40: CRC-CCITT over bytes 0-38
+        let crc = DVFrame.dstarCRC(data: payload, from: 0, count: 39)
+        payload[39] = UInt8(crc & 0xFF)
+        payload[40] = UInt8((crc >> 8) & 0xFF)
 
         return buildFrame(command: dstarHeader, payload: payload)
     }

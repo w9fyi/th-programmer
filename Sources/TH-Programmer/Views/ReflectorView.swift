@@ -119,7 +119,7 @@ struct ReflectorView: View {
                     }
                     .frame(minWidth: 200)
                     .accessibilityLabel("Serial port")
-                    .accessibilityHint("Select the serial port for TH-D75 MMDVM connection. Bluetooth ports appear here after connecting above.")
+                    .accessibilityHint("Select a serial port for USB MMDVM connection. Not needed when using direct Bluetooth RFCOMM.")
                     .disabled(reflectorStore.mmdvmState != .idle)
                 }
 
@@ -134,9 +134,9 @@ struct ReflectorView: View {
                         reflectorStore.connectMMDVM()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(reflectorStore.selectedSerialPort == nil || reflectorStore.mmdvmState != .idle)
+                    .disabled(reflectorStore.selectedSerialPort == nil && reflectorStore.selectedBluetoothRadio == nil && reflectorStore.bluetoothManager.radios.isEmpty || reflectorStore.mmdvmState != .idle)
                     .accessibilityLabel("Connect MMDVM")
-                    .accessibilityHint("Connect to the TH-D75 in terminal mode via the selected serial port")
+                    .accessibilityHint("Connect to the TH-D75 in terminal mode via direct Bluetooth RFCOMM. Radio must be paired and Menu 650 set to Reflector TERM Mode.")
 
                     Button("Disconnect MMDVM") {
                         reflectorStore.disconnectMMDVM()
@@ -170,7 +170,7 @@ struct ReflectorView: View {
                 }
             }
         } label: {
-            Label("MMDVM Serial", systemImage: "cable.connector")
+            Label("MMDVM Connection", systemImage: "cable.connector")
                 .font(.headline)
         }
         .onAppear {
@@ -218,7 +218,7 @@ struct ReflectorView: View {
                             }
                             .buttonStyle(.bordered)
                             .accessibilityLabel("Connect to \(radio.name) via Bluetooth")
-                            .accessibilityHint("Establishes the Bluetooth serial connection so the radio appears as a serial port")
+                            .accessibilityHint("Connects to \(radio.name) via Bluetooth for direct RFCOMM gateway mode")
                         }
                     }
                     .accessibilityElement(children: .combine)
@@ -687,20 +687,23 @@ struct ReflectorView: View {
         case .probing: return .yellow
         case .ready: return .green
         case .bridging: return .blue
+        case .reconnecting: return .orange
         case .error: return .red
         }
     }
 
     private var mmdvmStatusText: String {
+        let transport = reflectorStore.isDirectRFCOMM ? "Direct RFCOMM" : "Serial Port"
         switch reflectorStore.mmdvmState {
         case .idle: return "Not connected"
-        case .probing: return "Probing…"
+        case .probing: return "Probing… (\(transport))"
         case .ready:
             if let version = reflectorStore.mmdvmFirmwareVersion {
-                return "Ready — \(version)"
+                return "Ready — \(version) (\(transport))"
             }
-            return "Ready"
-        case .bridging: return "Bridging active"
+            return "Ready (\(transport))"
+        case .bridging: return "Bridging active (\(transport))"
+        case .reconnecting(let attempt): return "Reconnecting (\(attempt)/10)…"
         case .error(let msg): return "Error: \(msg)"
         }
     }
