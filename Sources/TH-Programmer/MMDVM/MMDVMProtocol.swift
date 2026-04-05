@@ -32,16 +32,16 @@ enum MMDVMProtocol {
     // MARK: - D-STAR Frame Commands
 
     /// D-STAR header frame (41 bytes of D-STAR header data).
-    static let dstarHeader: UInt8 = 0x30
+    static let dstarHeader: UInt8 = 0x10
 
     /// D-STAR voice data frame (9 AMBE + 3 slow data = 12 bytes).
-    static let dstarData: UInt8 = 0x31
+    static let dstarData: UInt8 = 0x11
 
     /// D-STAR frame lost indicator.
-    static let dstarLost: UInt8 = 0x32
+    static let dstarLost: UInt8 = 0x12
 
     /// D-STAR end-of-transmission.
-    static let dstarEOT: UInt8 = 0x33
+    static let dstarEOT: UInt8 = 0x13
 
     // MARK: - Modem → Host Responses
 
@@ -54,16 +54,33 @@ enum MMDVMProtocol {
     // MARK: - Configuration
 
     /// Build a Set Config frame that enables D-STAR mode.
+    /// Protocol v1 format: 23 payload bytes (26 bytes total on wire).
     /// Based on MMDVMHost's CModem::setConfig.
-    /// Payload layout (after command byte):
-    ///   Byte 0 (flags1): bit0=rxInvert, bit1=txInvert, bit2=pttInvert, bit7=simplex
-    ///   Byte 1 (modes):  bit0=D-STAR, bit1=DMR, bit2=YSF, bit3=P25, bit4=NXDN
-    ///   Bytes 2+: TX delay, mode-specific params (zeros = defaults)
     static func buildSetConfig() -> Data {
-        var payload = Data(count: 16)
-        payload[0] = 0x80  // flags1: simplex mode (bit 7), no inversions
-        payload[1] = 0x01  // modes: D-STAR enabled (bit 0)
-        // Remaining bytes are TX delay, frequency offsets, etc. — zeros = defaults
+        var payload = Data(count: 23)
+        payload[0]  = 0x00  // flags: simplex (bit7=0), no inversions
+        payload[1]  = 0x01  // modes: D-STAR enabled (bit 0)
+        payload[2]  = 0x08  // TX delay: 8 × 10ms = 80ms preamble
+        payload[3]  = 0x00  // mode state: MODE_IDLE
+        payload[4]  = 0x32  // RX level: 50% (0x32 = 50)
+        payload[5]  = 0x00  // CW ID TX level
+        payload[6]  = 0x00  // DMR color code (unused)
+        payload[7]  = 0x00  // DMR delay (unused)
+        payload[8]  = 0x80  // oscillator offset: 128 = 0 offset
+        payload[9]  = 0x32  // D-STAR TX level: 50%
+        payload[10] = 0x00  // DMR TX level (unused)
+        payload[11] = 0x00  // YSF TX level (unused)
+        payload[12] = 0x00  // P25 TX level (unused)
+        payload[13] = 0x80  // TX DC offset: 128 = 0
+        payload[14] = 0x80  // RX DC offset: 128 = 0
+        payload[15] = 0x00  // NXDN TX level (unused)
+        payload[16] = 0x00  // YSF TX hang (unused)
+        payload[17] = 0x00  // POCSAG TX level (unused)
+        payload[18] = 0x00  // FM TX level (unused)
+        payload[19] = 0x00  // P25 TX hang (unused)
+        payload[20] = 0x00  // NXDN TX hang (unused)
+        payload[21] = 0x00  // M17 TX level (unused)
+        payload[22] = 0x00  // M17 TX hang (unused)
         return buildFrame(command: setConfig, payload: payload)
     }
 

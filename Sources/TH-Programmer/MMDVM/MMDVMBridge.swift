@@ -72,8 +72,9 @@ final class MMDVMBridge: @unchecked Sendable {
     /// Periodic GET_STATUS timer to keep the MMDVM/RFCOMM connection alive.
     private var keepaliveTimer: DispatchSourceTimer?
 
-    /// Keepalive interval — send GET_STATUS every 5 seconds.
-    private static let keepaliveInterval: TimeInterval = 5.0
+    /// Keepalive interval — send GET_STATUS every 250ms (MMDVMHost standard).
+    /// The modem considers the host dead after 2 seconds without a status poll.
+    private static let keepaliveInterval: TimeInterval = 0.25
 
     // MARK: - Init
 
@@ -98,14 +99,19 @@ final class MMDVMBridge: @unchecked Sendable {
             }
         }
 
-        // Detect transport disconnect and trigger reconnect
+        // Detect transport disconnect and trigger reconnect.
+        // Only reconnect AFTER initial connection succeeds (state reaches .ready).
+        // During initial open(), the transport may report errors from retry attempts
+        // which should NOT trigger reconnect (open() handles its own retries).
         transport.onStateChange = { [weak self] transportState in
             self?.bridgeQueue.async {
                 guard let self else { return }
+                guard self.state == .ready || self.state == .bridging else {
+                    return  // suppress reconnect during initial connection
+                }
                 if case .error = transportState, !self.userStopped {
                     self.attemptReconnect()
-                } else if case .disconnected = transportState,
-                          self.state != .idle, !self.userStopped {
+                } else if case .disconnected = transportState, !self.userStopped {
                     self.attemptReconnect()
                 }
             }
@@ -281,8 +287,12 @@ final class MMDVMBridge: @unchecked Sendable {
     // MARK: - Serial Data Handling (radio → app)
 
     private func handleSerialData(_ data: Data) {
-        let hex = data.prefix(20).map { String(format: "%02X", $0) }.joined(separator: " ")
-        onError?("RFCOMM rx: \(data.count)b [\(hex)]")
+        // Log non-STATUS raw data to catch any unrecognized frames from the radio
+        let isStatusOnly = data.count == 10 && data.starts(with: [0xE0, 0x0A, 0x01])
+        if !isStatusOnly {
+            let hex = data.prefix(30).map { String(format: "%02X", $0) }.joined(separator: " ")
+            onError?("📨 RAW RFCOMM rx: \(data.count)b [\(hex)]")
+        }
         let frames = parser.feed(data)
         for frame in frames {
             handleParsedFrame(frame)
@@ -307,57 +317,123 @@ final class MMDVMBridge: @unchecked Sendable {
             }
 
         case .ack:
-            onError?("MMDVM ACK")
+            // Suppress from log — normal response to SET_CONFIG/SET_MODE
+            break
 
         case .nak(let reason):
             onError?("MMDVM NAK: reason \(String(format: "0x%02X", reason))")
 
         case .status:
-            onError?("MMDVM STATUS")
+            // Suppress from log — fires every 250ms, would flood UI
+            break
 
         case .dstarHeader(let payload):
-            onError?("MMDVM rx D-STAR HEADER (\(payload.count)b)")
+            if let header = DVFrame.headerFromMMDVM(payload) {
+                onError?("📡 RX HEADER from \(header.myCall) (\(payload.count)b)")
+            } else {
+                onError?("📡 RX HEADER (\(payload.count)b)")
+            }
             handleRadioHeader(payload)
 
         case .dstarVoice(let payload):
             handleRadioVoice(payload)
 
         case .dstarEOT:
-            onError?("MMDVM rx D-STAR EOT")
+            onError?("📡 RX END OF TRANSMISSION")
             handleRadioEOT()
 
         case .dstarLost:
-            onError?("MMDVM rx D-STAR LOST")
+            onError?("📡 RX SIGNAL LOST")
 
-        case .unknown:
-            onError?("MMDVM rx UNKNOWN frame")
+        case .unknown(let cmd, let payload):
+            let hex = payload.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " ")
+            onError?("⚠️ UNKNOWN MMDVM command 0x\(String(format: "%02X", cmd)) (\(payload.count)b) [\(hex)]")
         }
     }
 
-    /// Radio started a TX — extract callsign and begin network stream.
+    /// Reflector callsign for RPT1/RPT2 fields (e.g. "REF001").
+    /// Set by ReflectorStore when attaching the reflector.
+    var reflectorCallsign: String = ""
+    var reflectorModule: Character = "A"
+
+    /// Radio started a TX — rewrite RPT1/RPT2 in the raw header and forward.
+    /// The radio sends DIRECT in RPT1/RPT2 (terminal mode). The reflector needs
+    /// proper routing fields to process the stream:
+    ///   RPT1 = our callsign + module (e.g. "AI5OS  C")
+    ///   RPT2 = reflector + module (e.g. "REF001 C")
+    /// CRC is recalculated after rewriting.
     private func handleRadioHeader(_ payload: Data) {
         guard let client = reflectorClient, state == .bridging else { return }
+        guard payload.count >= 41 else { return }
 
-        if let header = DVFrame.headerFromMMDVM(payload) {
+        let header = DVFrame.headerFromMMDVM(payload)
+        if let header {
+            onError?("📡 TX → reflector: MY=\(header.myCall) YOUR=\(header.yourCall) RPT1=\(header.rpt1) RPT2=\(header.rpt2)")
             onHeaderReceived?(header.myCall)
         }
+
+        // Rewrite RPT1/RPT2 but preserve YOUR exactly as the radio sends it.
+        // The radio sends YOUR="       E" (E in position 8) — this is correct
+        // for D-STAR echo test and matches what works on the OpenSPOT.
+        var rewritten = Data(payload)
+        let myCall = header?.myCall ?? ""
+
+        // RPT2 at bytes 3-10, RPT1 at bytes 11-18 (per MMDVM header layout)
+        let refPadded = (String(reflectorCallsign.prefix(7)).padding(toLength: 7, withPad: " ", startingAt: 0) + String(reflectorModule))
+        let myPadded = (String(myCall.prefix(7)).padding(toLength: 7, withPad: " ", startingAt: 0) + String(reflectorModule))
+        for (i, byte) in refPadded.utf8.prefix(8).enumerated() {
+            rewritten[3 + i] = byte   // RPT2
+        }
+        for (i, byte) in myPadded.utf8.prefix(8).enumerated() {
+            rewritten[11 + i] = byte  // RPT1
+        }
+
+        // Recalculate CRC-CCITT over bytes 0-38
+        let crc = DVFrame.dstarCRC(data: rewritten, from: 0, count: 39)
+        rewritten[39] = UInt8(crc & 0xFF)
+        rewritten[40] = UInt8((crc >> 8) & 0xFF)
 
         let streamID = DExtraProtocol.randomStreamID()
         currentTXStreamID = streamID
         txFrameCounter = 0
+        txVoiceForwardCount = 0
 
-        // Send header to reflector
-        let myCall = DVFrame.headerFromMMDVM(payload)?.myCall ?? ""
-        client.sendHeader(streamID: streamID, myCallsign: myCall)
+        let rpt1Str = String(bytes: rewritten[11..<19], encoding: .ascii) ?? "?"
+        let rpt2Str = String(bytes: rewritten[3..<11], encoding: .ascii) ?? "?"
+        onError?("📤 TX HEADER → reflector (stream=\(String(format: "%04X", streamID)) RPT1=\(rpt1Str) RPT2=\(rpt2Str) CRC=\(String(format: "%02X%02X", rewritten[39], rewritten[40])))")
+        client.sendRawHeader(streamID: streamID, headerPayload: rewritten)
     }
+
+    /// Counter for TX voice frames forwarded to the reflector.
+    private var txVoiceForwardCount = 0
 
     /// Radio sent a voice frame — forward to network.
     private func handleRadioVoice(_ payload: Data) {
-        guard let client = reflectorClient, state == .bridging else { return }
-        guard let streamID = currentTXStreamID else { return }
+        guard let client = reflectorClient, state == .bridging else {
+            if txVoiceForwardCount == 0 {
+                onError?("⚠️ TX VOICE DROPPED: client=\(reflectorClient == nil ? "nil" : "ok") state=\(state)")
+            }
+            return
+        }
+        guard let streamID = currentTXStreamID else {
+            if txVoiceForwardCount == 0 {
+                onError?("⚠️ TX VOICE DROPPED: no currentTXStreamID")
+            }
+            return
+        }
 
         if let dvFrame = DVFrame.fromMMDVM(payload, streamID: streamID, frameCounter: txFrameCounter) {
             client.sendVoiceFrame(dvFrame)
+            txVoiceForwardCount += 1
+            // Log first frame and then every superframe (21 frames)
+            if txVoiceForwardCount == 1 {
+                let hex = payload.prefix(12).map { String(format: "%02X", $0) }.joined(separator: " ")
+                onError?("📤 TX VOICE #\(txVoiceForwardCount) → reflector (stream=\(String(format: "%04X", streamID)) seq=\(txFrameCounter)) [\(hex)]")
+            } else if txVoiceForwardCount % 21 == 0 {
+                onError?("📤 TX VOICE #\(txVoiceForwardCount) → reflector")
+            }
+        } else {
+            onError?("⚠️ TX VOICE: fromMMDVM returned nil (payload \(payload.count)b)")
         }
 
         txFrameCounter = (txFrameCounter + 1) % DExtraProtocol.framesPerSuperframe
@@ -375,9 +451,11 @@ final class MMDVMBridge: @unchecked Sendable {
             slowData: DExtraProtocol.fillerSlowData
         )
         client.sendVoiceFrame(lastFrame)
+        onError?("📤 TX EOT → reflector (\(txVoiceForwardCount) voice frames sent, stream=\(String(format: "%04X", streamID)))")
 
         currentTXStreamID = nil
         txFrameCounter = 0
+        txVoiceForwardCount = 0
     }
 
     // MARK: - Network Voice Handling (network → radio)
@@ -392,6 +470,7 @@ final class MMDVMBridge: @unchecked Sendable {
             return  // already sent header for this stream
         }
         currentRXStreamID = 1  // mark as "header sent" (actual stream ID doesn't matter here)
+        networkFrameCount = 0  // reset frame counter for new transmission
 
         let headerFrame = MMDVMProtocol.buildDStarHeader(
             myCallsign: callsign,
@@ -399,7 +478,7 @@ final class MMDVMBridge: @unchecked Sendable {
             rpt1Callsign: "DIRECT  ",
             rpt2Callsign: "        "
         )
-        onError?("Sending header to radio for \(callsign) (\(headerFrame.count)b)")
+        onError?("🔊 TX HEADER → radio for \(callsign)")
         do {
             try transport.send(headerFrame)
         } catch {
@@ -415,17 +494,30 @@ final class MMDVMBridge: @unchecked Sendable {
     /// 20ms in nanoseconds for voice frame pacing.
     private static let framePacingNanos: UInt64 = 20_000_000
 
+    /// Target send time for the next voice frame (absolute nanoseconds).
+    /// Using target-based pacing instead of delta-based avoids drift accumulation.
+    private var nextFrameTargetTime: UInt64 = 0
+
     private func handleNetworkVoiceFrame(_ frame: DVFrame) {
         // Pace voice frames at 20ms intervals — the radio expects steady timing.
-        // Network packets arrive in bursts; without pacing the radio drops frames.
+        // Use target-based pacing: each frame advances the target by 20ms.
+        // If we fall behind (network burst), skip the sleep and catch up.
         let now = DispatchTime.now().uptimeNanoseconds
-        if lastFrameSendTime > 0 {
-            let elapsed = now - lastFrameSendTime
-            if elapsed < Self.framePacingNanos {
-                let sleepNanos = Self.framePacingNanos - elapsed
+        if nextFrameTargetTime > 0 {
+            if now < nextFrameTargetTime {
+                // We're ahead — sleep until the target time
+                let sleepNanos = nextFrameTargetTime - now
                 Thread.sleep(forTimeInterval: Double(sleepNanos) / 1_000_000_000.0)
+            } else if now > nextFrameTargetTime + Self.framePacingNanos * 3 {
+                // We're more than 3 frames behind — reset target to avoid permanent catchup
+                nextFrameTargetTime = now
             }
+            // If 1-3 frames behind, just send immediately (catch up without resetting)
         }
+        if nextFrameTargetTime == 0 {
+            nextFrameTargetTime = DispatchTime.now().uptimeNanoseconds
+        }
+        nextFrameTargetTime += Self.framePacingNanos
         lastFrameSendTime = DispatchTime.now().uptimeNanoseconds
 
         // Convert DVFrame to MMDVM serial frame and send to radio
@@ -433,7 +525,7 @@ final class MMDVMBridge: @unchecked Sendable {
         networkFrameCount += 1
         // Log every 21st frame (once per superframe) to avoid flooding
         if networkFrameCount % 21 == 1 {
-            onError?("Voice frame #\(networkFrameCount) → radio (\(mmdvmFrame.count)b, seq=\(frame.sequenceNumber))")
+            onError?("🔊 VOICE #\(networkFrameCount) → radio")
         }
         do {
             try transport.send(mmdvmFrame)
@@ -443,10 +535,11 @@ final class MMDVMBridge: @unchecked Sendable {
 
         // If this is the last frame, send EOT to the radio
         if frame.isLastFrame {
-            onError?("EOT → radio (total \(networkFrameCount) frames)")
+            onError?("🔊 EOT → radio (\(networkFrameCount) frames)")
             networkFrameCount = 0
             currentRXStreamID = nil  // reset so next transmission gets a fresh header
             lastFrameSendTime = 0    // reset pacing for next transmission
+            nextFrameTargetTime = 0
             let eotFrame = MMDVMProtocol.buildDStarEOT()
             do {
                 try transport.send(eotFrame)

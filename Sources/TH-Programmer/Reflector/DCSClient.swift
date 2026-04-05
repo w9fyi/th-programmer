@@ -117,15 +117,26 @@ final class DCSClient: ReflectorClientProtocol, @unchecked Sendable {
         }
     }
 
-    func sendHeader(streamID: UInt16, myCallsign: String) {
+    func sendHeader(streamID: UInt16, myCallsign: String, yourCallsign: String = "CQCQCQ  ", rpt1Callsign: String = "        ", rpt2Callsign: String = "        ") {
         guard state == .connected, let sock = udpSocket else { return }
         let packet = DVFrame.buildDCSHeader(
             streamID: streamID,
             myCallsign: myCallsign,
+            yourCallsign: yourCallsign,
+            rpt1Callsign: rpt1Callsign,
+            rpt2Callsign: rpt2Callsign,
             remoteModule: remoteModule
         )
         if !sock.send(packet) {
             onError?("DCS header send error")
+        }
+    }
+
+    func sendRawHeader(streamID: UInt16, headerPayload: Data) {
+        guard state == .connected, let sock = udpSocket else { return }
+        let packet = DVFrame.buildDCSHeaderFromRaw(streamID: streamID, headerPayload: headerPayload)
+        if !sock.send(packet) {
+            onError?("DCS raw header send error")
         }
     }
 

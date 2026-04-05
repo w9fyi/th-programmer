@@ -3,6 +3,7 @@
 import SwiftUI
 import AppKit
 import CoreAudio
+import IOBluetooth
 
 /// Manages the D-STAR reflector internet gateway — supports two modes:
 /// 1. Software Codec: mbelib on Mac, AVAudioEngine for audio I/O
@@ -224,6 +225,16 @@ final class ReflectorStore: ObservableObject {
         // Store the radio for direct RFCOMM transport selection
         selectedBluetoothRadio = radio
 
+        // In MMDVM terminal mode, DON'T open the Bluetooth connection here.
+        // connectMMDVM() handles the full Bluetooth lifecycle itself, and if we
+        // connect here first, the radio hears two "connection completed" events
+        // which corrupts terminal mode state (radio enters SPP instead of MMDVM).
+        // Just record the selection and let connectMMDVM do the work.
+        if gatewayMode == .mmdvmTerminal {
+            announceAccessibility("Radio selected. Press Connect MMDVM to connect.")
+            return
+        }
+
         Task {
             let path = await bluetoothManager.connect(radio)
             refreshDevices()
@@ -266,6 +277,14 @@ final class ReflectorStore: ObservableObject {
     // MARK: - MMDVM Connect / Disconnect
 
     func connectMMDVM() {
+        // Guard against double-connect — only allow from idle or error states
+        switch mmdvmState {
+        case .idle, .error:
+            break  // OK to connect
+        case .probing, .ready, .bridging, .reconnecting:
+            return  // already connecting or connected
+        }
+
         // Diagnostic log to Desktop
         let logPath = "/Users/justinmann/Desktop/rfcomm_connect.log"
         func diagLog(_ msg: String) {
@@ -309,9 +328,11 @@ final class ReflectorStore: ObservableObject {
         if let btRadio = selectedBluetoothRadio,
            btRadio.addressString != "detected-from-dev" {
             diagLog("Taking DIRECT RFCOMM path for \(btRadio.addressString)")
-            // Release BluetoothManager's held RFCOMM channel first —
-            // the radio only supports one RFCOMM session at a time.
+            // Release BluetoothManager's held RFCOMM channel so RFCOMMTransport
+            // can open channel 2 directly. The radio only supports one RFCOMM session.
+            let hadChannel = bluetoothManager.rfcommChannel != nil
             bluetoothManager.releaseRFCOMMChannel()
+            diagLog("Released BluetoothManager RFCOMM channel (had=\(hadChannel))")
 
             // Direct RFCOMM — bypass virtual serial port
             let rfcomm = RFCOMMTransport(address: btRadio.addressString)
@@ -442,6 +463,16 @@ final class ReflectorStore: ObservableObject {
         connectionLog = []
         favoritesManager.updateLastUsed(target: target)
 
+        // Helper to write connection events to both UI log and diagnostic file
+        func connLog(_ msg: String) {
+            connectionLog.append(msg)
+            let line = "\(ISO8601DateFormatter().string(from: Date())) Connect: \(msg)\n"
+            if let data = line.data(using: .utf8),
+               let h = FileHandle(forWritingAtPath: "/Users/justinmann/Desktop/rfcomm_connect.log") {
+                h.seekToEndOfFile(); h.write(data); h.closeFile()
+            }
+        }
+
         // Create the appropriate reflector client
         let client = makeReflectorClient(for: target)
         self.reflectorClient = client
@@ -454,36 +485,36 @@ final class ReflectorStore: ObservableObject {
         // The static host files only have unresolvable hostnames like ref001.dstargateway.org —
         // the auth server returns actual IP addresses.
         if target.type == .ref {
-            // Check if we already have a cached IP (from a previous auth session)
-            if let cached = hostLookup.lookup(target: target), ReflectorHostLookup.isIPAddress(cached) {
-                connectionLog.append("Using cached auth IP for \(reflectorName): \(cached)")
-                performConnect(client: client, target: target, hostname: cached, reflectorName: reflectorName)
-                return
-            }
-
+            // Always authenticate with the DPlus trust server before connecting.
+            // The TCP auth registers our callsign+IP with the trust system.
+            // Without fresh auth, the reflector may accept login but silently
+            // discard voice from unregistered IPs.
             statusMessage = "Authenticating with DPlus trust server…"
-            connectionLog.append(statusMessage)
+            connLog(statusMessage)
             announceAccessibility(statusMessage)
 
             hostLookup.authenticateDPlus(callsign: myCallsign, diagnostic: { [weak self] msg in
                 Task { @MainActor in
                     self?.connectionLog.append("[auth] \(msg)")
+                    let line = "\(ISO8601DateFormatter().string(from: Date())) Connect: [auth] \(msg)\n"
+                    if let data = line.data(using: .utf8),
+                       let h = FileHandle(forWritingAtPath: "/Users/justinmann/Desktop/rfcomm_connect.log") {
+                        h.seekToEndOfFile(); h.write(data); h.closeFile()
+                    }
                 }
             }) { [weak self] count in
                 guard let self else { return }
-                self.connectionLog.append("DPlus auth returned \(count) reflector IPs")
+                connLog("DPlus auth returned \(count) reflector IPs")
                 if let ip = self.hostLookup.lookup(target: target),
                    ReflectorHostLookup.isIPAddress(ip) {
-                    self.connectionLog.append("Resolved \(reflectorName) → \(ip)")
+                    connLog("Resolved \(reflectorName) → \(ip)")
                     self.performConnect(client: client, target: target, hostname: ip, reflectorName: reflectorName)
                 } else if let hostname = self.hostLookup.lookup(target: target), !hostname.isEmpty {
-                    // Auth failed or didn't return an IP — fall back to host file hostname.
-                    // NWConnection can resolve hostnames natively.
-                    self.connectionLog.append("Auth failed — falling back to hostname \(hostname)")
+                    connLog("Auth failed — falling back to hostname \(hostname)")
                     self.performConnect(client: client, target: target, hostname: hostname, reflectorName: reflectorName)
                 } else {
                     let fallback = ReflectorHostLookup.fallbackHostname(type: target.type, number: target.number)
-                    self.connectionLog.append("Auth failed, no host file entry — trying fallback \(fallback)")
+                    connLog("Auth failed, no host file entry — trying fallback \(fallback)")
                     self.performConnect(client: client, target: target, hostname: fallback, reflectorName: reflectorName)
                 }
             }
@@ -493,9 +524,10 @@ final class ReflectorStore: ObservableObject {
         let hostname: String
         if let resolved = hostLookup.lookup(target: target) {
             hostname = resolved
+            connLog("Resolved \(reflectorName) → \(hostname)")
         } else {
             hostname = ReflectorHostLookup.fallbackHostname(type: target.type, number: target.number)
-            connectionLog.append("Host file lookup miss for \(reflectorName) — using fallback \(hostname)")
+            connLog("Host file lookup miss for \(reflectorName) — using fallback \(hostname)")
         }
 
         performConnect(client: client, target: target, hostname: hostname, reflectorName: reflectorName)
@@ -547,7 +579,7 @@ final class ReflectorStore: ObservableObject {
         txStreamID = streamID
         txFrameCounter = 0
 
-        reflectorClient?.sendHeader(streamID: streamID, myCallsign: myCallsign)
+        reflectorClient?.sendHeader(streamID: streamID, myCallsign: myCallsign, yourCallsign: "CQCQCQ  ", rpt1Callsign: "        ", rpt2Callsign: "        ")
 
         do {
             try audioEngine.startCapture(inputDeviceID: selectedInputDeviceID)
@@ -641,6 +673,12 @@ final class ReflectorStore: ObservableObject {
                     )
 
                     if self.gatewayMode == .mmdvmTerminal {
+                        // Set reflector identity for header RPT1/RPT2 fields
+                        if let target = self.connectedReflector {
+                            let name = "\(target.type.rawValue)\(String(format: "%03d", target.number))"
+                            self.mmdvmBridge?.reflectorCallsign = name
+                            self.mmdvmBridge?.reflectorModule = target.module
+                        }
                         // Attach reflector to MMDVM bridge
                         self.mmdvmBridge?.attachReflector(client)
                     } else {
@@ -713,6 +751,12 @@ final class ReflectorStore: ObservableObject {
         }
 
         client.onError = { [weak self] message in
+            // Also write to diagnostic file log so we can see DPlus/DExtra/DCS events
+            let line = "\(ISO8601DateFormatter().string(from: Date())) Reflector: \(message)\n"
+            if let data = line.data(using: .utf8),
+               let h = FileHandle(forWritingAtPath: "/Users/justinmann/Desktop/rfcomm_connect.log") {
+                h.seekToEndOfFile(); h.write(data); h.closeFile()
+            }
             Task { @MainActor in
                 self?.errorMessage = message
                 self?.statusMessage = message

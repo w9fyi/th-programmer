@@ -303,7 +303,7 @@ final class TerminalModeClient: @unchecked Sendable {
             txNetworkFrameCounter = 0
 
             // Send header to reflector
-            reflectorClient?.sendHeader(streamID: streamID, myCallsign: header.my)
+            reflectorClient?.sendHeader(streamID: streamID, myCallsign: header.my, yourCallsign: header.your, rpt1Callsign: header.rpt1, rpt2Callsign: header.rpt2)
         }
     }
 

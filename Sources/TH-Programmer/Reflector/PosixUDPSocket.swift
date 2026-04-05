@@ -140,6 +140,16 @@ final class PosixUDPSocket: @unchecked Sendable {
 
         if bytesRead > 0 {
             let data = Data(buffer[0..<bytesRead])
+            // Log non-keepalive packets to diagnostic file for debugging
+            let isKeepalive = data.count == 3 && data[data.startIndex] == 0x03
+            if !isKeepalive {
+                let hex = data.prefix(20).map { String(format: "%02X", $0) }.joined(separator: " ")
+                let line = "\(ISO8601DateFormatter().string(from: Date())) UDP RAW RX: \(data.count)b [\(hex)]\n"
+                if let logData = line.data(using: .utf8),
+                   let h = FileHandle(forWritingAtPath: "/Users/justinmann/Desktop/rfcomm_connect.log") {
+                    h.seekToEndOfFile(); h.write(logData); h.closeFile()
+                }
+            }
             onReceive?(data)
         }
     }

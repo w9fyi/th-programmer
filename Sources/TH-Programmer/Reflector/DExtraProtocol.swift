@@ -46,6 +46,11 @@ enum DExtraProtocol {
     ///   Byte  9:    remote module letter
     ///   Byte  10:   0x00
     static func buildLinkPacket(callsign: String, module: Character, remoteModule: Character) -> Data {
+        // Format: 11 bytes total per ircDDBGateway DExtraHandler.cpp
+        //   Bytes 0-7: callsign (8 bytes, space-padded)
+        //   Byte  8:   local module letter (e.g., 'B')
+        //   Byte  9:   remote module letter (e.g., 'A')
+        //   Byte  10:  0x00
         var packet = Data(callsignBytes(callsign))
         packet.append(contentsOf: String(module).utf8.prefix(1))
         packet.append(contentsOf: String(remoteModule).utf8.prefix(1))

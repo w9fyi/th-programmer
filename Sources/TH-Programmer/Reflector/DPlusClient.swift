@@ -124,23 +124,56 @@ final class DPlusClient: ReflectorClientProtocol, @unchecked Sendable {
 
     // MARK: - Send Voice
 
+    /// Counter for TX voice frames sent to the reflector (for diagnostics).
+    private var txSendCount = 0
+
     func sendVoiceFrame(_ frame: DVFrame) {
-        guard state == .connected, let sock = udpSocket else { return }
-        let packet = frame.serializeDPlus()
-        if !sock.send(packet) {
-            onError?("DPlus send error")
+        guard state == .connected, let sock = udpSocket else {
+            onError?("DPlus sendVoiceFrame BLOCKED: state=\(state) sock=\(udpSocket == nil ? "nil" : "ok")")
+            return
         }
+        let packet = frame.serializeDPlus()
+        if sock.send(packet) {
+            txSendCount += 1
+            if txSendCount == 1 || frame.isLastFrame {
+                let hex = packet.prefix(20).map { String(format: "%02X", $0) }.joined(separator: " ")
+                onError?("DPlus UDP tx #\(txSendCount): \(packet.count)b [\(hex)]")
+            }
+        } else {
+            onError?("DPlus send error on frame #\(txSendCount)")
+        }
+        if frame.isLastFrame { txSendCount = 0 }
     }
 
-    func sendHeader(streamID: UInt16, myCallsign: String) {
+    func sendHeader(streamID: UInt16, myCallsign: String, yourCallsign: String = "CQCQCQ  ", rpt1Callsign: String = "        ", rpt2Callsign: String = "        ") {
         guard state == .connected, let sock = udpSocket else { return }
         let packet = DVFrame.buildDPlusHeader(
             streamID: streamID,
             myCallsign: myCallsign,
-            remoteModule: remoteModule
+            remoteModule: remoteModule,
+            yourCallsign: yourCallsign,
+            rpt1Callsign: rpt1Callsign,
+            rpt2Callsign: rpt2Callsign
         )
+        let hex = packet.map { String(format: "%02X", $0) }.joined(separator: " ")
+        onError?("DPlus UDP tx HEADER: \(packet.count)b [\(hex)]")
         if !sock.send(packet) {
             onError?("DPlus header send error")
+        }
+    }
+
+    func sendRawHeader(streamID: UInt16, headerPayload: Data) {
+        guard state == .connected, let sock = udpSocket else {
+            onError?("DPlus sendRawHeader BLOCKED: state=\(state) sock=\(udpSocket == nil ? "nil" : "ok")")
+            return
+        }
+        let packet = DVFrame.buildDPlusHeaderFromRaw(streamID: streamID, headerPayload: headerPayload)
+        txSendCount = 0
+        let hex = packet.map { String(format: "%02X", $0) }.joined(separator: " ")
+        if sock.send(packet) {
+            onError?("DPlus UDP tx HEADER: \(packet.count)b [\(hex)]")
+        } else {
+            onError?("DPlus raw header send error")
         }
     }
 
@@ -157,7 +190,9 @@ final class DPlusClient: ReflectorClientProtocol, @unchecked Sendable {
 
     private func sendLogin() {
         guard let sock = udpSocket else { return }
-        let packet = DPlusProtocol.buildLoginPacket(callsign: callsign)
+        let packet = DPlusProtocol.buildLoginPacket(callsign: callsign, module: remoteModule)
+        let hex = packet.map { String(format: "%02X", $0) }.joined(separator: " ")
+        onError?("DPlus login packet (\(packet.count)b): [\(hex)]")
         if !sock.send(packet) {
             onError?("DPlus login send error")
             teardown()

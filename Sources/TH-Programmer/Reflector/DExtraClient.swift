@@ -130,14 +130,25 @@ final class DExtraClient: ReflectorClientProtocol, @unchecked Sendable {
         }
     }
 
-    func sendHeader(streamID: UInt16, myCallsign: String) {
+    func sendHeader(streamID: UInt16, myCallsign: String, yourCallsign: String = "CQCQCQ  ", rpt1Callsign: String = "        ", rpt2Callsign: String = "        ") {
         guard state == .connected, let sock = udpSocket else { return }
         let packet = DVFrame.buildDExtraHeader(
             streamID: streamID,
-            myCallsign: myCallsign
+            myCallsign: myCallsign,
+            yourCallsign: yourCallsign,
+            rpt1Callsign: rpt1Callsign,
+            rpt2Callsign: rpt2Callsign
         )
         if !sock.send(packet) {
             onError?("DExtra header send error")
+        }
+    }
+
+    func sendRawHeader(streamID: UInt16, headerPayload: Data) {
+        guard state == .connected, let sock = udpSocket else { return }
+        let packet = DVFrame.buildDExtraHeaderFromRaw(streamID: streamID, headerPayload: headerPayload)
+        if !sock.send(packet) {
+            onError?("DExtra raw header send error")
         }
     }
 
@@ -150,6 +161,8 @@ final class DExtraClient: ReflectorClientProtocol, @unchecked Sendable {
             module: localModule,
             remoteModule: remoteModule
         )
+        let hex = packet.map { String(format: "%02X", $0) }.joined(separator: " ")
+        onError?("DExtra link packet (\(packet.count)b): [\(hex)] call=\(callsign) local=\(localModule) remote=\(remoteModule)")
         if !sock.send(packet) {
             onError?("DExtra registration send error")
             teardown()

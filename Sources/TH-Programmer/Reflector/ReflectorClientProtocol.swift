@@ -14,5 +14,6 @@ protocol ReflectorClientProtocol: AnyObject {
     func connect(hostname: String, module: Character, callsign: String, localModule: Character)
     func disconnect()
     func sendVoiceFrame(_ frame: DVFrame)
-    func sendHeader(streamID: UInt16, myCallsign: String)
+    func sendHeader(streamID: UInt16, myCallsign: String, yourCallsign: String, rpt1Callsign: String, rpt2Callsign: String)
+    func sendRawHeader(streamID: UInt16, headerPayload: Data)
 }

@@ -38,7 +38,7 @@ final class RFCOMMTransport: NSObject, MMDVMTransport, IOBluetoothRFCOMMChannelD
     }
 
     /// Maximum connection attempts before giving up.
-    static let maxConnectAttempts = 5
+    static let maxConnectAttempts = 10
 
     /// Log file for connection diagnostics.
     private static let logPath = "/Users/justinmann/Desktop/rfcomm_connect.log"
@@ -87,9 +87,14 @@ final class RFCOMMTransport: NSObject, MMDVMTransport, IOBluetoothRFCOMMChannelD
         device = btDevice
         onStateChange?(.connecting("RFCOMM \(address)"))
 
-        // d75link pattern: retry the full ACL + RFCOMM sequence with backoff.
-        // macOS Bluetooth is unreliable — first attempt after radio power-on often fails.
         var lastError = ""
+
+        // Strategy: the radio is often already connected via macOS auto-pair.
+        // NEVER tear down an existing ACL — that causes a second "connection completed"
+        // on the radio which corrupts terminal mode state.
+        // Instead: open ACL only if not connected, then retry RFCOMM with backoff.
+        // If RFCOMM fails with exclusive access (0xE00002BC), wait longer — macOS
+        // may be holding the channel from auto-pair and needs time to release it.
         for attempt in 1...Self.maxConnectAttempts {
             if attempt > 1 {
                 let delay = min(Double(1 << (attempt - 2)), 8.0)
@@ -101,17 +106,8 @@ final class RFCOMMTransport: NSObject, MMDVMTransport, IOBluetoothRFCOMMChannelD
             let isConn = btDevice.isConnected()
             log("Attempt \(attempt): isConnected=\(isConn), channel=\(channel != nil)")
 
-            // Close stale baseband connection if device reports connected
-            // but no RFCOMM channel is open (radio was power-cycled).
-            if isConn && channel == nil {
-                log("Attempt \(attempt): closing stale baseband")
-                btDevice.closeConnection()
-                Thread.sleep(forTimeInterval: 1.0)
-                log("Attempt \(attempt): after closeConnection, isConnected=\(btDevice.isConnected())")
-            }
-
-            // Open ACL connection
-            if !btDevice.isConnected() {
+            // Open ACL connection only if not already connected
+            if !isConn {
                 log("Attempt \(attempt): opening ACL connection")
                 let aclResult = btDevice.openConnection()
                 log("Attempt \(attempt): openConnection result=0x\(String(format: "%08X", aclResult))")
@@ -147,6 +143,13 @@ final class RFCOMMTransport: NSObject, MMDVMTransport, IOBluetoothRFCOMMChannelD
                 lastError = "Bluetooth permission required — check macOS prompt"
                 log("Attempt \(attempt): NotPermitted — waiting 2s for TCC prompt")
                 Thread.sleep(forTimeInterval: 2.0)
+            } else if openResult == IOReturn(kIOReturnExclusiveAccess) {
+                // macOS or BluetoothManager holds RFCOMM ch2 from auto-pair.
+                // The channel close is async — IOBluetooth may need a few seconds.
+                // Wait and retry WITHOUT tearing down the ACL.
+                lastError = "RFCOMM ch\(Self.channelID) exclusive access — waiting 1s for release"
+                log("Attempt \(attempt): \(lastError)")
+                Thread.sleep(forTimeInterval: 1.0)
             } else {
                 lastError = "RFCOMM ch\(Self.channelID) failed (0x\(String(format: "%08X", openResult)))"
             }

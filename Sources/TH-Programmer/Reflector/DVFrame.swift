@@ -116,6 +116,61 @@ struct DVFrame: Equatable, Sendable {
         return (streamID: streamID, myCall: myCall, yourCall: yourCall, rpt1: rpt1, rpt2: rpt2)
     }
 
+    // MARK: - Raw Header Builders (pass-through from MMDVM)
+
+    /// Build a 56-byte DExtra header from raw 41-byte D-STAR header payload (from MMDVM).
+    /// Preserves all fields exactly as the radio sent them (MY, YOUR, RPT1, RPT2, CRC).
+    static func buildDExtraHeaderFromRaw(streamID: UInt16, headerPayload: Data) -> Data {
+        guard headerPayload.count >= 41 else { return Data() }
+        var packet = Data(count: 56)
+        packet[0] = 0x44; packet[1] = 0x53; packet[2] = 0x56; packet[3] = 0x54
+        packet[4] = 0x10
+        packet[5] = 0x00; packet[6] = 0x00; packet[7] = 0x00; packet[8] = 0x20
+        packet[9] = 0x00; packet[10] = 0x02; packet[11] = 0x01
+        packet[12] = UInt8(streamID & 0xFF)
+        packet[13] = UInt8(streamID >> 8)
+        packet[14] = 0x80
+        for i in 0..<41 {
+            packet[15 + i] = headerPayload[headerPayload.startIndex + i]
+        }
+        return packet
+    }
+
+    /// Build a 58-byte DPlus header from raw 41-byte D-STAR header payload.
+    /// Passes through the full payload including the radio's CRC verbatim.
+    /// The 05:53 dashboard registration used the radio's CRC — FF FF caused disconnects.
+    static func buildDPlusHeaderFromRaw(streamID: UInt16, headerPayload: Data) -> Data {
+        guard headerPayload.count >= 41 else { return Data() }
+        var packet = Data(count: 58)
+        packet[0] = 0x3A; packet[1] = 0x80
+        packet[2] = 0x44; packet[3] = 0x53; packet[4] = 0x56; packet[5] = 0x54
+        packet[6] = 0x10
+        packet[7] = 0x00; packet[8] = 0x00; packet[9] = 0x00; packet[10] = 0x20
+        packet[11] = 0x00; packet[12] = 0x02; packet[13] = 0x01
+        packet[14] = UInt8(streamID & 0xFF)
+        packet[15] = UInt8(streamID >> 8)
+        packet[16] = 0x80
+        // Copy all 41 bytes including the radio's CRC
+        for i in 0..<41 {
+            packet[17 + i] = headerPayload[headerPayload.startIndex + i]
+        }
+        return packet
+    }
+
+    /// Build a 100-byte DCS header from raw 41-byte D-STAR header payload.
+    static func buildDCSHeaderFromRaw(streamID: UInt16, headerPayload: Data) -> Data {
+        guard headerPayload.count >= 41 else { return Data() }
+        var packet = Data(count: 100)
+        packet[0] = 0x30; packet[1] = 0x30; packet[2] = 0x30; packet[3] = 0x31
+        for i in 0..<41 {
+            packet[4 + i] = headerPayload[headerPayload.startIndex + i]
+        }
+        packet[45] = UInt8(streamID & 0xFF)
+        packet[46] = UInt8(streamID >> 8)
+        packet[47] = 0x80
+        return packet
+    }
+
     // MARK: - DExtra Packet Construction
 
     /// Build a 27-byte DExtra voice packet.

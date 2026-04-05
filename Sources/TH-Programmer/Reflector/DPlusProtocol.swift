@@ -33,12 +33,16 @@ enum DPlusProtocol {
     /// Format: [0x1C, 0xC0, 0x04, 0x00] + repeater(16) + "DV019999"(8)
     /// The repeater field is 16 bytes (callsign space-padded to 16).
     /// Per Buster: struct { char repeater[16]; char magic[8]; } module;
-    static func buildLoginPacket(callsign: String) -> Data {
+    static func buildLoginPacket(callsign: String, module: Character = " ") -> Data {
         var packet = Data([0x1C, 0xC0, 0x04, 0x00])
-        // 16-byte repeater field (callsign padded to 16 with spaces)
-        let padded16 = String(callsign.uppercased().prefix(16))
-            .padding(toLength: 16, withPad: " ", startingAt: 0)
-        packet.append(contentsOf: padded16.utf8.prefix(16))
+        // 16-byte repeater field: callsign (7 chars) + module at position 8 + 8 spaces.
+        // The module in the login tells the reflector which module to link to.
+        // Confirmed working: AI5OS  C registered on REF001 dashboard.
+        let padded7 = String(callsign.uppercased().prefix(7))
+            .padding(toLength: 7, withPad: " ", startingAt: 0)
+        var repeater = padded7 + String(module)
+        repeater = repeater.padding(toLength: 16, withPad: " ", startingAt: 0)
+        packet.append(contentsOf: repeater.utf8.prefix(16))
         // 8-byte version string "DV019999"
         packet.append(contentsOf: versionString.utf8.prefix(8))
         return packet
