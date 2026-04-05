@@ -123,26 +123,118 @@ Hotspot discovery and management for MMDVM-compatible hotspots. Shows detected h
 
 ---
 
-## Tab 7: Reflector
+## Tab 7: Reflector Gateway
 
-D-STAR reflector connectivity. Connect to REF, XRF, or DCS reflectors directly from the app.
+The Reflector tab provides a full D-STAR internet gateway, allowing your TH-D75 to communicate through D-STAR reflectors (REF, XRF, DCS) over the internet via Bluetooth. The radio handles the AMBE voice codec — the app bridges the serial terminal mode data to and from the reflector network.
+
+### Gateway Modes
+
+The Reflector tab supports two gateway modes, selectable at the top:
+
+- **MMDVM Terminal** (recommended) — Uses the TH-D75's built-in Reflector Terminal Mode (Menu 650). The radio handles all AMBE voice encoding/decoding. The app bridges the MMDVM serial data between the radio and the reflector over the internet. This mode provides full-quality D-STAR audio with no software codec required.
+
+- **Software Codec** — Uses the mbelib software codec on your Mac with your Mac's microphone and speaker. This mode does not require the radio for audio but has lower audio quality than the hardware codec.
+
+### Setting Up MMDVM Terminal Mode
+
+Before connecting, configure your TH-D75:
+
+1. **Enable Reflector Terminal Mode:** On the radio, go to Menu 650 (Reflector TERM Mode) and set it to ON.
+2. **Pair Bluetooth:** If not already paired, go to Menu 930 on the radio and turn Bluetooth ON. Pair with your Mac via System Settings, Bluetooth.
+3. **Select Gateway Mode:** In TH-Programmer, select "MMDVM Terminal" at the top of the Reflector tab.
+
+### Connecting to the Radio
+
+1. Click **Connect MMDVM** to open a direct Bluetooth RFCOMM connection to the radio.
+2. The app will connect to the radio and probe for the MMDVM firmware. You should hear one "connection completed" tone from the radio.
+3. Once connected, the status shows the firmware version (e.g., "TH-D75 RTM1.00") and the state changes to "Radio ready."
+
+**Important notes:**
+- Do NOT press the Bluetooth "Connect" button in the radio list before pressing Connect MMDVM. The MMDVM button handles the entire Bluetooth lifecycle. Connecting Bluetooth separately first will cause a double-connection that disrupts terminal mode.
+- If the radio shows "No response from radio," verify Menu 650 is set to ON.
+- If the connection fails on the first attempt, the app will retry automatically (up to 10 attempts).
 
 ### Connecting to a Reflector
 
-1. Select the reflector type (REF, XRF, or DCS).
-2. Enter the reflector number (e.g., 001).
-3. Choose the module (A–Z).
-4. Click Connect.
+1. Enter your callsign in the "My Callsign" field (e.g., AI5OS). This must be a valid amateur radio callsign registered for D-STAR.
+2. Select the reflector type: **REF** (DPlus protocol), **XRF** (DExtra protocol), or **DCS**.
+3. Enter the reflector number (e.g., 001).
+4. Choose the module (A–Z). Module C is commonly used for general chat.
+5. Click **Connect**.
 
-The app writes the UR call into D-STAR slot 6, briefly keys up the radio to send the link command, then restores slot 6 to CQCQCQ.
+For REF reflectors, the app first authenticates with the DPlus trust server (auth.dstargateway.org) to register your callsign and IP address. This is required for the reflector to accept your voice transmissions. After authentication, the app connects to the reflector via UDP.
+
+The status will show "Connected" when the link is established. You will see keepalive exchanges in the connection log.
+
+### Making a Transmission
+
+Once both the radio and reflector are connected (status shows "Bridging active"):
+
+1. Simply key the radio as you normally would (press PTT on the TH-D75).
+2. The app automatically captures the MMDVM voice frames from the radio and forwards them to the reflector.
+3. When you release PTT, the app sends an end-of-transmission marker.
+4. Your transmission will appear on the reflector's dashboard (e.g., http://ref001.dstargateway.org) in the "Last Heard" list.
+
+### Receiving Audio
+
+When another station transmits on the reflector module you are connected to:
+
+1. The app receives the voice frames from the reflector.
+2. The frames are forwarded to your radio via the MMDVM serial bridge.
+3. You hear the audio through your radio's speaker, just as if you were connected to a local repeater.
+
+The "Heard Stations" section at the bottom of the Reflector tab shows recently heard callsigns with timestamps.
+
+### URCALL Field and D-STAR Routing
+
+The TH-D75 sends the URCALL (YOUR) field from its current DR/DV settings. Common URCALL values:
+
+- **CQCQCQ** — General call to all stations on the module.
+- **E** (in position 8) — Echo test. Note: the echo test is a gateway function, not a reflector function. The app does not currently implement local echo. To test your connection, make a CQCQCQ call or listen for other stations.
+- A specific callsign — Direct call to another station.
+
+### Favorites
+
+Save frequently used reflector connections as favorites:
+
+1. Connect to a reflector.
+2. Click **Add Favorite** or use the menu item.
+3. Enter a label (e.g., "Texas D-STAR Chat").
+4. The favorite appears in the Favorites section for one-click reconnection.
+
+### Reflector Directory
+
+Click **Directory** to browse the full list of known D-STAR reflectors. The directory is fetched from official host files and the DPlus trust server. You can search by name or number and connect directly from the directory.
 
 ### Disconnecting
 
-Click Disconnect to send the unlink command.
+- **Disconnect** (reflector) — Disconnects from the reflector but keeps the radio MMDVM link open.
+- **Disconnect MMDVM** — Disconnects the radio's Bluetooth MMDVM session entirely.
 
-### Reflector Info
+### Connection Log
 
-Click Info to query the connected reflector. Listen for the audio response on the radio.
+The connection log at the bottom of the Reflector tab shows detailed diagnostic information including authentication, registration, and packet flow. This is useful for troubleshooting connection issues.
+
+### Troubleshooting Reflector Connections
+
+**Radio says "connection completed" twice:**
+This should not happen with the current version. If it does, disconnect MMDVM and reconnect. The app handles Bluetooth connection management automatically.
+
+**"No response from radio" after connecting:**
+- Verify Menu 650 (Reflector TERM Mode) is set to ON.
+- Power cycle Bluetooth on the radio (Menu 930, OFF then ON).
+- Ensure no other app is using the Bluetooth connection.
+
+**Reflector connects but nobody hears you:**
+- Verify your callsign is registered for D-STAR at https://regist.dstargateway.org
+- Check that the reflector dashboard shows your callsign in "Last Heard" after transmitting.
+- Try a different reflector module or reflector.
+
+**Audio is choppy on long received transmissions:**
+- This can occur due to network jitter. The app uses adaptive frame pacing to minimize this. Ensure your internet connection is stable.
+
+**Cannot connect to XRF reflectors:**
+- XRF (DExtra) reflector support requires the reflector to be online and accessible on UDP port 30001. Some XRF reflectors may be offline or have restricted access.
 
 ---
 
