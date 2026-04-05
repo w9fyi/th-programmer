@@ -365,7 +365,6 @@ final class RadioSettingsTests: XCTestCase {
         let map = MemoryMap()
         var s = map.radioSettings()
         s.txInhibit        = true
-        s.mwSwAntenna      = true
         s.wxAlert          = true
         s.autoRepeaterShift = true
         s.toneBurstHold    = true
@@ -387,7 +386,6 @@ final class RadioSettingsTests: XCTestCase {
 
         let s2 = map.radioSettings()
         XCTAssertTrue(s2.txInhibit)
-        XCTAssertTrue(s2.mwSwAntenna)
         XCTAssertTrue(s2.wxAlert)
         XCTAssertTrue(s2.cwReverse)
         XCTAssertTrue(s2.fmRadioEnabled)

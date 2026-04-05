@@ -207,9 +207,7 @@ final class LiveBluetoothTests: XCTestCase {
         XCTAssertLessThanOrEqual(sq, 31)
     }
 
-    func testGetDialLock_doesNotThrow() throws {
-        XCTAssertNoThrow(try conn.getDialLock())
-    }
+    // getDialLock removed — LK command not supported on D75 firmware 1.03
 
     func testGetVOX_doesNotThrow() throws {
         XCTAssertNoThrow(try conn.getVOX())
@@ -226,13 +224,7 @@ final class LiveBluetoothTests: XCTestCase {
         XCTAssertEqual(try conn.getAFGain(), original)
     }
 
-    func testBeep_roundtrip() throws {
-        let original = try conn.getBeep()
-        try conn.setBeep(!original)
-        XCTAssertEqual(try conn.getBeep(), !original)
-        try conn.setBeep(original)
-        XCTAssertEqual(try conn.getBeep(), original)
-    }
+    // getBeep/setBeep removed — BP command not supported on D75 firmware 1.03
 
     // MARK: - Active VFO
 

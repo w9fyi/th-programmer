@@ -238,6 +238,12 @@ final class THD75LiveConnection: @unchecked Sendable {
         self.port      = SerialPort(path: portPath)
     }
 
+    /// Whether this is a Bluetooth connection (affects reconnect behavior).
+    var isBluetooth: Bool { SerialPort.isBluetoothPort(portPath) }
+
+    /// Non-blocking health check — returns false if the port fd is dead.
+    func isHealthy() -> Bool { port.isHealthy() }
+
     nonisolated deinit { port.close() }
 
     // MARK: - NMEA-aware line reader

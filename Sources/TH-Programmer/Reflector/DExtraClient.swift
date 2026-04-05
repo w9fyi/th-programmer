@@ -70,7 +70,11 @@ final class DExtraClient: ReflectorClientProtocol, @unchecked Sendable {
             self?.onError?(msg)
         }
 
-        guard sock.open(host: hostname, port: DExtraProtocol.port, localPort: DExtraProtocol.port) else {
+        // Use ephemeral local port — binding to 30001 causes EADDRINUSE on reconnect
+        // and is not required by modern DExtra reflectors. ircDDBGateway binds 30001
+        // because it's a gateway (needs a fixed port for return traffic), but clients
+        // like DroidStar and BlueDV use ephemeral ports successfully.
+        guard sock.open(host: hostname, port: DExtraProtocol.port) else {
             onError?("Failed to open UDP socket to \(hostname):\(DExtraProtocol.port)")
             state = .disconnected
             return
@@ -156,13 +160,18 @@ final class DExtraClient: ReflectorClientProtocol, @unchecked Sendable {
 
     private func sendRegistration() {
         guard let sock = udpSocket else { return }
+        // For direct (non-gateway) connections, use the remote module as the
+        // local module. This matches DroidStar and BlueDV behavior — a personal
+        // client linking to module C sends "C" in both the local and remote
+        // module positions. ircDDBGateway uses its own repeater module, but
+        // that's a gateway-specific convention.
         let packet = DExtraProtocol.buildLinkPacket(
             callsign: callsign,
-            module: localModule,
+            module: remoteModule,
             remoteModule: remoteModule
         )
         let hex = packet.map { String(format: "%02X", $0) }.joined(separator: " ")
-        onError?("DExtra link packet (\(packet.count)b): [\(hex)] call=\(callsign) local=\(localModule) remote=\(remoteModule)")
+        onError?("DExtra link packet (\(packet.count)b): [\(hex)] call=\(callsign) local=\(remoteModule) remote=\(remoteModule)")
         if !sock.send(packet) {
             onError?("DExtra registration send error")
             teardown()
@@ -202,22 +211,8 @@ final class DExtraClient: ReflectorClientProtocol, @unchecked Sendable {
             }
 
         case .linkNak:
-            onError?("Link NAK — reflector refused connection")
+            onError?("Link NAK — reflector refused connection (echoed packet unchanged)")
             teardown()
-
-        case .linkBusy:
-            onError?("Reflector module is busy")
-            teardown()
-
-        case .control:
-            // Generic control packet (e.g. echo of link request)
-            if state == .registering {
-                connectionTimeoutWork?.cancel()
-                connectionTimeoutWork = nil
-                state = .connected
-                onError?("Control packet received during registration — connected!")
-                startKeepalive()
-            }
 
         case .keepalive:
             break

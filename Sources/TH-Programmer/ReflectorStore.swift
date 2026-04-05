@@ -43,8 +43,9 @@ final class ReflectorStore: ObservableObject {
     @Published var radioUSBAvailable: Bool = false
     @Published var radioBluetoothAvailable: Bool = false
 
-    // Bluetooth
-    @Published var bluetoothManager = BluetoothManager()
+    // Bluetooth — shared with RadioStore to avoid two managers fighting
+    // over the same RFCOMM channel. Injected via init(bluetooth:).
+    @Published var bluetoothManager: BluetoothManager
     @Published var isBluetoothScanning: Bool = false
 
     // Favorites
@@ -106,7 +107,11 @@ final class ReflectorStore: ObservableObject {
 
     // MARK: - Init
 
-    init() {
+    /// Initialize with a shared BluetoothManager (from RadioStore) to avoid
+    /// two managers competing for the same RFCOMM channel on the radio.
+    init(bluetooth: BluetoothManager? = nil) {
+        self.bluetoothManager = bluetooth ?? BluetoothManager()
+
         setupAudioEngine()
         refreshDevices()
 
@@ -120,8 +125,12 @@ final class ReflectorStore: ObservableObject {
             }
         }
 
-        bluetoothManager.startMonitoringConnections()
-        bluetoothManager.refreshPaired()
+        // Only start monitoring if we own the manager (no shared one provided).
+        // When shared, RadioStore already handles discovery and monitoring.
+        if bluetooth == nil {
+            bluetoothManager.startMonitoringConnections()
+            bluetoothManager.refreshPaired()
+        }
 
         bluetoothManager.onRadioConnected = { [weak self] radio in
             Task { @MainActor in
@@ -481,9 +490,10 @@ final class ReflectorStore: ObservableObject {
         // Resolve hostname from official host files, fall back to generated hostname
         let reflectorName = "\(target.type.rawValue)\(String(format: "%03d", target.number))"
 
-        // For REF targets, always use DPlus auth server to get real IPs.
-        // The static host files only have unresolvable hostnames like ref001.dstargateway.org —
-        // the auth server returns actual IP addresses.
+        // For REF targets, always authenticate with DPlus trust server first.
+        // DPlus auth registers our callsign+IP with the trust system — without it,
+        // reflectors silently discard our packets.
+        // XRF/XLX use DExtra protocol which doesn't require DPlus auth.
         if target.type == .ref {
             // Always authenticate with the DPlus trust server before connecting.
             // The TCP auth registers our callsign+IP with the trust system.

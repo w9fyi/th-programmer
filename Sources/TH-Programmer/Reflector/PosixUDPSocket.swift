@@ -205,9 +205,10 @@ final class PosixTCPSocket: @unchecked Sendable {
 
     private var fd: Int32 = -1
 
-    /// Connect to a TCP server. Blocks until connected or timeout.
+    /// Connect to a TCP server. Tries all resolved IPs until one connects.
+    /// Blocks until connected or all addresses exhausted.
     func connect(host: String, port: UInt16, timeout: TimeInterval = 10.0) -> Bool {
-        // Resolve
+        // Resolve — may return multiple IPs (round-robin DNS)
         var hints = addrinfo()
         hints.ai_family = AF_INET
         hints.ai_socktype = SOCK_STREAM
@@ -215,12 +216,28 @@ final class PosixTCPSocket: @unchecked Sendable {
 
         var result: UnsafeMutablePointer<addrinfo>?
         let status = getaddrinfo(host, String(port), &hints, &result)
-        guard status == 0, let addrInfo = result else {
+        guard status == 0, let firstAddr = result else {
             if let result { freeaddrinfo(result) }
             return false
         }
-        defer { freeaddrinfo(result!) }
+        defer { freeaddrinfo(firstAddr) }
 
+        // Try each resolved address — auth.dstargateway.org has multiple IPs
+        // and some are unreachable, so we must try them all.
+        let perAddrTimeout = max(timeout / 3, 3.0)  // split timeout across attempts
+        var current: UnsafeMutablePointer<addrinfo>? = firstAddr
+        while let addrInfo = current {
+            if tryConnect(addrInfo: addrInfo, timeout: perAddrTimeout) {
+                return true
+            }
+            current = addrInfo.pointee.ai_next
+        }
+
+        return false
+    }
+
+    /// Attempt a single TCP connect to one address with timeout.
+    private func tryConnect(addrInfo: UnsafeMutablePointer<addrinfo>, timeout: TimeInterval) -> Bool {
         // Create socket
         fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
         guard fd >= 0 else { return false }

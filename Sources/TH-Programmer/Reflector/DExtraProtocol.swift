@@ -9,8 +9,8 @@ enum DExtraProtocol {
     /// Default DExtra port (UDP only).
     static let port: UInt16 = 30001
 
-    /// Keepalive interval in seconds.
-    static let keepaliveInterval: TimeInterval = 5.0
+    /// Keepalive interval in seconds (xlxd expects every 3s, timeout at 30s).
+    static let keepaliveInterval: TimeInterval = 3.0
 
     /// Connection timeout in seconds.
     static let connectionTimeout: TimeInterval = 10.0
@@ -46,15 +46,15 @@ enum DExtraProtocol {
     ///   Byte  9:    remote module letter
     ///   Byte  10:   0x00
     static func buildLinkPacket(callsign: String, module: Character, remoteModule: Character) -> Data {
-        // Format: 11 bytes total per ircDDBGateway DExtraHandler.cpp
+        // Format: 11 bytes total per DroidStar xrf.cpp / xlxd cdextraprotocol.cpp
         //   Bytes 0-7: callsign (8 bytes, space-padded)
-        //   Byte  8:   local module letter (e.g., 'B')
-        //   Byte  9:   remote module letter (e.g., 'A')
-        //   Byte  10:  0x00
+        //   Byte  8:   local module letter (same as remote for hotspot/dongle clients)
+        //   Byte  9:   remote module letter ('A'-'Z')
+        //   Byte  10:  revision (0x0B = modern client, per DroidStar/UP4DAR)
         var packet = Data(callsignBytes(callsign))
         packet.append(contentsOf: String(module).utf8.prefix(1))
         packet.append(contentsOf: String(remoteModule).utf8.prefix(1))
-        packet.append(0x00)
+        packet.append(0x0B)  // revision 1 — modern client identifier
         return packet
     }
 
@@ -104,44 +104,25 @@ enum DExtraProtocol {
     // MARK: - Packet Identification
 
     /// Identify the type of a received DExtra packet.
+    ///
+    /// DExtra ACK/NAK detection per ircDDBGateway DExtraHandler.cpp:
+    /// The reflector echoes back our 11-byte link packet. If the last byte
+    /// is changed from 0x00 to a non-zero value (typically the module letter),
+    /// it's an ACK. If unchanged (still 0x00), it's a NAK/rejection.
     static func identifyPacket(_ data: Data) -> PacketType {
         guard !data.isEmpty else { return .unknown }
+        let s = data.startIndex
 
         // DSVT voice/header packets (start with "DSVT" magic)
         if data.count >= 27,
-           data[data.startIndex] == 0x44,     // D
-           data[data.startIndex + 1] == 0x53, // S
-           data[data.startIndex + 2] == 0x56, // V
-           data[data.startIndex + 3] == 0x54  // T
+           data[s] == 0x44,     // D
+           data[s + 1] == 0x53, // S
+           data[s + 2] == 0x56, // V
+           data[s + 3] == 0x54  // T
         {
-            let frameType = data[data.startIndex + 4]
+            let frameType = data[s + 4]
             if frameType == 0x10 { return .header }
             if frameType == 0x20 { return .voice }
-        }
-
-        // Link ACK: ~14 bytes with "ACK" at offset 10
-        if data.count >= 13, data.count <= 20 {
-            let s = data.startIndex
-            if data[s + 10] == 0x41, // A
-               data[s + 11] == 0x43, // C
-               data[s + 12] == 0x4B  // K
-            {
-                return .linkAck
-            }
-            if data[s + 10] == 0x4E, // N
-               data[s + 11] == 0x41, // A
-               data[s + 12] == 0x4B  // K
-            {
-                return .linkNak
-            }
-            if data.count >= 14,
-               data[s + 10] == 0x42, // B
-               data[s + 11] == 0x55, // U
-               data[s + 12] == 0x53, // S
-               data[s + 13] == 0x59  // Y
-            {
-                return .linkBusy
-            }
         }
 
         // Keepalive from server: 9 bytes (callsign + null)
@@ -149,13 +130,38 @@ enum DExtraProtocol {
             return .keepalive
         }
 
-        // Unlink: 11 bytes with spaces at bytes 8-9
+        // Link ACK: some reflectors (XLX/XRF) send a 14-byte response with
+        // "ACK" at bytes 10-12: [callsign(8)][modules(2)][A][C][K][0x00]
+        if data.count == 14,
+           data[s + 10] == 0x41, // A
+           data[s + 11] == 0x43, // C
+           data[s + 12] == 0x4B  // K
+        {
+            return .linkAck
+        }
+
+        // Link NAK: 14 bytes with "NAK" at bytes 10-12
+        if data.count == 14,
+           data[s + 10] == 0x4E, // N
+           data[s + 11] == 0x41, // A
+           data[s + 12] == 0x4B  // K
+        {
+            return .linkNak
+        }
+
+        // 11-byte control packets: link ACK, link NAK, or unlink
+        // Per classic DExtra protocol (ircDDBGateway):
+        //   - Unlink: bytes 8-9 are both 0x20 (space)
+        //   - Link ACK: last byte (10) is non-zero (reflector changed it)
+        //   - Link NAK: last byte (10) is 0x00 (echoed back unchanged)
         if data.count == 11 {
-            let s = data.startIndex
             if data[s + 8] == 0x20, data[s + 9] == 0x20 {
                 return .unlink
             }
-            return .control
+            if data[s + 10] != 0x00 {
+                return .linkAck
+            }
+            return .linkNak
         }
 
         return .unknown
@@ -164,10 +170,8 @@ enum DExtraProtocol {
     enum PacketType: CustomStringConvertible {
         case header
         case voice
-        case control
         case linkAck
         case linkNak
-        case linkBusy
         case keepalive
         case unlink
         case unknown
@@ -176,10 +180,8 @@ enum DExtraProtocol {
             switch self {
             case .header: return "header"
             case .voice: return "voice"
-            case .control: return "control"
             case .linkAck: return "linkAck"
             case .linkNak: return "linkNak"
-            case .linkBusy: return "linkBusy"
             case .keepalive: return "keepalive"
             case .unlink: return "unlink"
             case .unknown: return "unknown"

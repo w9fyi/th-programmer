@@ -37,7 +37,9 @@ final class ReflectorHostLookup: @unchecked Sendable {
 
     // MARK: - URLs
 
-    private static let baseURL = "https://raw.githubusercontent.com/g4klx/ircDDBGateway/master/Data/"
+    // Pi-Star host files are more up-to-date than g4klx — many XRF reflectors
+    // have moved IPs and only Pi-Star tracks the current addresses.
+    private static let baseURL = "https://www.pistar.uk/downloads/"
     private static let hostFiles = [
         "DPlus_Hosts.txt",
         "DExtra_Hosts.txt",
@@ -151,7 +153,10 @@ final class ReflectorHostLookup: @unchecked Sendable {
                 continue
             }
 
-            let task = URLSession.shared.dataTask(with: url) { data, _, error in
+            // Pi-Star blocks requests without a proper User-Agent header (403 Forbidden)
+            var request = URLRequest(url: url)
+            request.setValue("TH-Programmer/1.0", forHTTPHeaderField: "User-Agent")
+            let task = URLSession.shared.dataTask(with: request) { data, _, error in
                 defer { group.leave() }
                 guard let data, error == nil,
                       let text = String(data: data, encoding: .utf8) else { return }

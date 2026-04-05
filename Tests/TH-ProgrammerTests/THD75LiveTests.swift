@@ -397,11 +397,11 @@ final class THD75LiveTests: XCTestCase {
     // MARK: - BS response parser
 
     func testParseBSResponse_on() {
-        XCTAssertEqual(THD75LiveConnection.parseBSResponse("BS 1"), true)
+        XCTAssertEqual(THD75LiveConnection.parseBSResponse("BS 1"), 1)
     }
 
     func testParseBSResponse_off() {
-        XCTAssertEqual(THD75LiveConnection.parseBSResponse("BS 0"), false)
+        XCTAssertEqual(THD75LiveConnection.parseBSResponse("BS 0"), 0)
     }
 
     func testParseBSResponse_invalid() {

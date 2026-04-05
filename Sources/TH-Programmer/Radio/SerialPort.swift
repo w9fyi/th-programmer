@@ -88,23 +88,29 @@ final class SerialPort {
     }
 
     /// Read exactly `count` bytes, blocking up to `timeout` seconds total.
+    /// Uses poll() to enforce a hard timeout — never blocks on a dead fd.
     func read(count: Int, timeout: TimeInterval = 5.0) throws -> Data {
         guard fd >= 0 else { throw SerialError.notOpen }
         var buffer = Data(count: count)
         var received = 0
         let deadline = Date().addingTimeInterval(timeout)
         while received < count {
-            if Date() > deadline {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 {
                 throw SerialError.timeout(received, count)
             }
+            // poll() with hard timeout — returns 0 on timeout, -1 on error,
+            // >0 when data is ready. This prevents blocking forever on a dead
+            // Bluetooth virtual serial port whose fd becomes invalid.
+            let pollMs = Int32(min(remaining * 1000, 2000))  // cap at 2s per poll
+            let ready = try pollFD(events: Int16(POLLIN), timeoutMs: pollMs)
+            if !ready { continue }  // poll timeout — loop will check deadline
+
             let n = buffer.withUnsafeMutableBytes { ptr -> Int in
                 Darwin.read(fd, ptr.baseAddress!.advanced(by: received), count - received)
             }
             if n < 0 {
-                if errno == EAGAIN || errno == EWOULDBLOCK {
-                    usleep(1000)
-                    continue
-                }
+                if errno == EAGAIN || errno == EWOULDBLOCK { continue }
                 throw SerialError.readFailed(errno)
             }
             if n == 0 { usleep(1000); continue }
@@ -114,20 +120,24 @@ final class SerialPort {
     }
 
     /// Read up to `count` bytes within `timeout` seconds total.
+    /// Uses poll() to enforce a hard timeout — never blocks on a dead fd.
     func readAvailable(maxCount: Int = 256, timeout: TimeInterval = 1.0) throws -> Data {
         guard fd >= 0 else { throw SerialError.notOpen }
         var buffer = Data(count: maxCount)
         let deadline = Date().addingTimeInterval(timeout)
         var received = 0
-        while received < maxCount && Date() < deadline {
+        while received < maxCount {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 { break }
+            let pollMs = Int32(min(remaining * 1000, 1000))
+            let ready = try pollFD(events: Int16(POLLIN), timeoutMs: pollMs)
+            if !ready { break }  // poll timeout — return what we have
+
             let n = buffer.withUnsafeMutableBytes { ptr -> Int in
                 Darwin.read(fd, ptr.baseAddress!.advanced(by: received), maxCount - received)
             }
             if n < 0 {
-                if errno == EAGAIN || errno == EWOULDBLOCK {
-                    usleep(5000)
-                    continue
-                }
+                if errno == EAGAIN || errno == EWOULDBLOCK { continue }
                 throw SerialError.readFailed(errno)
             }
             if n == 0 { break }
@@ -137,18 +147,25 @@ final class SerialPort {
     }
 
     /// Read one line (up to '\r' or '\n'), with timeout.
+    /// Uses poll() to enforce a hard timeout — never blocks on a dead fd.
     func readLine(timeout: TimeInterval = 2.0) throws -> String {
         guard fd >= 0 else { throw SerialError.notOpen }
         var result = Data()
         let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 { break }
+            let pollMs = Int32(min(remaining * 1000, 500))
+            let ready = try pollFD(events: Int16(POLLIN), timeoutMs: pollMs)
+            if !ready { continue }  // poll timeout — loop will check deadline
+
             var byte: UInt8 = 0
             let n = Darwin.read(fd, &byte, 1)
             if n < 0 {
-                if errno == EAGAIN || errno == EWOULDBLOCK { usleep(5000); continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK { continue }
                 throw SerialError.readFailed(errno)
             }
-            if n == 0 { usleep(5000); continue }
+            if n == 0 { continue }
             if byte == 0x0D || byte == 0x0A { break }
             result.append(byte)
         }
@@ -161,6 +178,44 @@ final class SerialPort {
     func flushInput() {
         guard fd >= 0 else { return }
         tcflush(fd, TCIFLUSH)
+    }
+
+    // MARK: - poll() wrapper
+
+    /// Poll the file descriptor for the given events with a hard timeout.
+    /// Returns true if the fd is ready, false on timeout.
+    /// Throws SerialError.readFailed on POLLHUP/POLLERR/POLLNVAL (dead fd).
+    private func pollFD(events: Int16, timeoutMs: Int32) throws -> Bool {
+        guard fd >= 0 else { throw SerialError.notOpen }
+        var pfd = pollfd(fd: fd, events: events, revents: 0)
+        let result = poll(&pfd, 1, timeoutMs)
+        if result < 0 {
+            if errno == EINTR { return false }  // interrupted — caller will retry
+            throw SerialError.readFailed(errno)
+        }
+        if result == 0 { return false }  // timeout
+        // Check for error conditions — BT port died, fd invalid, etc.
+        if pfd.revents & Int16(POLLHUP) != 0 || pfd.revents & Int16(POLLERR) != 0
+            || pfd.revents & Int16(POLLNVAL) != 0 {
+            throw SerialError.portDied
+        }
+        return true
+    }
+
+    /// Check whether the serial port fd is still valid and connected.
+    /// Returns false if the port has been disconnected (BT power cycle, USB unplug).
+    /// This is a non-blocking, non-destructive check safe to call from any thread.
+    func isHealthy() -> Bool {
+        guard fd >= 0 else { return false }
+        var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        let result = poll(&pfd, 1, 0)  // non-blocking (0ms timeout)
+        if result < 0 { return false }
+        // POLLHUP/POLLERR/POLLNVAL = port is dead
+        if pfd.revents & Int16(POLLHUP) != 0 || pfd.revents & Int16(POLLERR) != 0
+            || pfd.revents & Int16(POLLNVAL) != 0 {
+            return false
+        }
+        return true
     }
 
     // MARK: - termios configuration
@@ -239,11 +294,16 @@ final class SerialPort {
     /// True when the port path looks like a Bluetooth SPP virtual port rather than USB.
     static func isBluetoothPort(_ path: String) -> Bool {
         let name = URL(fileURLWithPath: path).lastPathComponent.lowercased()
-        // Generic BT indicators
+        // Positive match for known BT patterns — TH-D75/D74 SPP ports appear as
+        // cu.TH-D75 or cu.TH-D75-SerialPort. Also match generic BT indicators.
+        if name.contains("th-d75") || name.contains("thd75")
+            || name.contains("th-d74") || name.contains("thd74") { return true }
         if name.contains("bluetooth") || name.contains("-wireless") { return true }
-        // TH-D75/D74 SPP ports appear as cu.TH-D75 or cu.TH-D75-SerialPort —
-        // these are NOT "usbmodem" so anything non-usbmodem is treated as BT/serial
-        return !name.contains("usbmodem")
+        // Known USB/wired ports — NOT Bluetooth
+        if name.contains("usbmodem") || name.contains("usbserial")
+            || name.contains("slab") { return false }
+        // Unknown port type — conservative default to non-BT
+        return false
     }
 }
 
@@ -257,6 +317,7 @@ enum SerialError: Error, LocalizedError {
     case writeFailed(Int32)
     case readFailed(Int32)
     case timeout(Int, Int)
+    case portDied  // BT disconnected, USB unplugged, or fd became invalid
 
     var errorDescription: String? {
         switch self {
@@ -274,6 +335,8 @@ enum SerialError: Error, LocalizedError {
             return "Read failed: errno \(err)"
         case .timeout(let got, let want):
             return "Timeout: received \(got)/\(want) bytes"
+        case .portDied:
+            return "Serial port disconnected — radio may have been turned off or unplugged"
         }
     }
 }

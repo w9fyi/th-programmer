@@ -456,6 +456,7 @@ final class RadioStore: ObservableObject {
     }
 
     func disconnectLive() {
+        isReconnecting = false  // cancel any in-progress reconnect
         stopPolling()
         liveConnection?.disconnect()
         liveConnection = nil
@@ -811,11 +812,31 @@ final class RadioStore: ObservableObject {
 
     // MARK: - Live polling
 
+    /// Consecutive poll failures before we declare the connection dead.
+    private static let maxPollFailures = 3
+
+    /// Whether a live reconnect attempt is in progress.
+    private var isReconnecting = false
+
     private func startPolling() {
         pollTask = Task { [weak self] in
+            var consecutiveFailures = 0
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 500_000_000)   // 0.5 s
                 guard let self, let conn = self.liveConnection else { break }
+
+                // Non-blocking health check — catches dead BT fd immediately
+                // without waiting for a blocking read to timeout.
+                let healthy = await withCheckedContinuation { cont in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        cont.resume(returning: conn.isHealthy())
+                    }
+                }
+                if !healthy {
+                    self.handleLiveDisconnect(reason: "Serial port disconnected")
+                    break
+                }
+
                 do {
                     let state = try await conn.asyncGetVFOState()
                     let smA = try await conn.asyncGetSMeter(band: 0)
@@ -833,6 +854,7 @@ final class RadioStore: ObservableObject {
                             catch { c.resume(throwing: error) }
                         }
                     }
+                    consecutiveFailures = 0  // reset on success
                     await MainActor.run {
                         self.liveState = state
                         self.sMeterA = smA
@@ -841,15 +863,85 @@ final class RadioStore: ObservableObject {
                         if let vm = vmA { self.vfoMemModeA = vm }
                     }
                 } catch {
-                    await MainActor.run {
-                        self.liveConnected = false
-                        self.liveConnection = nil
-                        self.liveState = nil
-                        self.statusMessage = "Live connection lost."
-                        self.announceAccessibility("Live control disconnected.")
+                    consecutiveFailures += 1
+                    if consecutiveFailures >= Self.maxPollFailures {
+                        self.handleLiveDisconnect(reason: error.localizedDescription)
+                        break
                     }
-                    break
+                    // Transient failure — wait a bit longer and retry
+                    try? await Task.sleep(nanoseconds: 500_000_000)
                 }
+            }
+        }
+    }
+
+    /// Handle a live CAT disconnect — clean up state and attempt reconnect for BT.
+    private func handleLiveDisconnect(reason: String) {
+        let wasBluetooth = liveConnection?.isBluetooth ?? false
+        let savedPortPath = portPath
+
+        liveConnection?.disconnect()
+        liveConnection = nil
+        liveConnected = false
+        liveState = nil
+
+        if wasBluetooth && !isReconnecting {
+            statusMessage = "Bluetooth disconnected — reconnecting…"
+            announceAccessibility("Bluetooth disconnected. Attempting to reconnect.")
+            attemptLiveReconnect(portPath: savedPortPath, attempt: 1)
+        } else {
+            statusMessage = "Live connection lost: \(reason)"
+            announceAccessibility("Live control disconnected.")
+        }
+    }
+
+    /// Attempt to reconnect a dropped live CAT session (BT only).
+    /// Exponential backoff: 2s, 4s, 8s, 16s — max 5 attempts.
+    private func attemptLiveReconnect(portPath: String, attempt: Int) {
+        guard attempt <= 5 else {
+            isReconnecting = false
+            statusMessage = "Reconnect failed after 5 attempts."
+            announceAccessibility("Could not reconnect to radio.")
+            return
+        }
+        isReconnecting = true
+        let delay = min(Double(1 << attempt), 16.0)  // 2, 4, 8, 16, 16
+        statusMessage = "Reconnecting (\(attempt)/5) in \(Int(delay))s…"
+
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard isReconnecting else { return }  // user may have manually reconnected
+
+            // Check if the BT port still exists in /dev
+            let portExists = FileManager.default.fileExists(atPath: portPath)
+            guard portExists else {
+                statusMessage = "Waiting for radio… (\(attempt)/5)"
+                announceAccessibility("Waiting for radio to reconnect.")
+                attemptLiveReconnect(portPath: portPath, attempt: attempt + 1)
+                return
+            }
+
+            do {
+                let conn = try await THD75LiveConnection.asyncConnect(portPath: portPath)
+                liveConnection = conn
+                liveConnected = true
+                isReconnecting = false
+                conn.nmeaHandler = { [weak self] sentence in
+                    guard let self else { return }
+                    if let pos = THD75LiveConnection.parseNMEAPosition(sentence) {
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            if self.radioInfo == nil { self.radioInfo = RadioInfoState() }
+                            self.radioInfo?.position = pos
+                        }
+                    }
+                }
+                statusMessage = "Reconnected to radio."
+                announceAccessibility("Live control reconnected.")
+                startPolling()
+                Task { await fetchRadioInfo() }
+            } catch {
+                attemptLiveReconnect(portPath: portPath, attempt: attempt + 1)
             }
         }
     }

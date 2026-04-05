@@ -6,9 +6,17 @@ import AppKit
 @main
 struct TH_ProgrammerApp: App {
 
-    @StateObject private var store = RadioStore()
-    @StateObject private var reflectorStore = ReflectorStore()
+    // ReflectorStore shares RadioStore's BluetoothManager so only one manager
+    // handles RFCOMM — prevents two instances fighting over channel 2.
+    @StateObject private var store: RadioStore
+    @StateObject private var reflectorStore: ReflectorStore
     @StateObject private var reflectorDirectory = ReflectorDirectory()
+
+    init() {
+        let radioStore = RadioStore()
+        _store = StateObject(wrappedValue: radioStore)
+        _reflectorStore = StateObject(wrappedValue: ReflectorStore(bluetooth: radioStore.bluetooth))
+    }
 
     var body: some Scene {
         WindowGroup {

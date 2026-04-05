@@ -65,9 +65,9 @@ final class DExtraProtocolTests: XCTestCase {
         XCTAssertEqual(packet[9], UInt8(ascii: "A"))
     }
 
-    func testBuildLinkPacket_nullTerminated() {
+    func testBuildLinkPacket_revisionByte() {
         let packet = DExtraProtocol.buildLinkPacket(callsign: "AI5OS", module: " ", remoteModule: "C")
-        XCTAssertEqual(packet[10], 0x00)
+        XCTAssertEqual(packet[10], 0x0B, "Byte 10 should be 0x0B (revision 1, modern client)")
     }
 
     // MARK: - Unlink Packet
@@ -141,12 +141,21 @@ final class DExtraProtocolTests: XCTestCase {
         XCTAssertEqual(DExtraProtocol.identifyPacket(packet), .header)
     }
 
-    func testIdentifyPacket_controlPacket() {
+    func testIdentifyPacket_linkNak_11bytes_lastByteZero() {
         var packet = Data(count: 11)
-        // 11 bytes with non-space at bytes 8-9 = control (not unlink)
+        // 11 bytes with non-space at bytes 8-9, last byte 0x00 = NAK
         packet[8] = 0x41  // 'A'
         packet[9] = 0x42  // 'B'
-        XCTAssertEqual(DExtraProtocol.identifyPacket(packet), .control)
+        // packet[10] is already 0x00
+        XCTAssertEqual(DExtraProtocol.identifyPacket(packet), .linkNak)
+    }
+
+    func testIdentifyPacket_linkAck_11bytes_lastByteNonZero() {
+        var packet = Data(count: 11)
+        packet[8] = 0x41  // 'A'
+        packet[9] = 0x42  // 'B'
+        packet[10] = 0x41 // non-zero = ACK
+        XCTAssertEqual(DExtraProtocol.identifyPacket(packet), .linkAck)
     }
 
     func testIdentifyPacket_empty() {
