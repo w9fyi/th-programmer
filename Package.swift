@@ -15,9 +15,20 @@ let package = Package(
                 .headerSearchPath("."),
             ]
         ),
+        .target(
+            name: "ambe_encoder",
+            dependencies: ["mbelib"],
+            path: "Sources/ambe_encoder",
+            publicHeadersPath: "include",
+            cSettings: [
+                .headerSearchPath("."),
+                .headerSearchPath("../mbelib"),
+                .headerSearchPath("../mbelib/include"),
+            ]
+        ),
         .executableTarget(
             name: "TH-Programmer",
-            dependencies: ["mbelib"],
+            dependencies: ["mbelib", "ambe_encoder"],
             path: "Sources/TH-Programmer",
             linkerSettings: [
                 .linkedFramework("IOKit"),

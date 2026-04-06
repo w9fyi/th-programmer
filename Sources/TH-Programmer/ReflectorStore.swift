@@ -402,6 +402,77 @@ final class ReflectorStore: ObservableObject {
             }
         }
 
+        // URCALL command callbacks — link/unlink/info/echo from the radio
+        bridge.onLinkRequest = { [weak self] target in
+            Task { @MainActor in
+                guard let self else { return }
+                self.connectionLog.append("[urcall] Link request: \(target.type.rawValue)\(String(format: "%03d", target.number)) module \(target.module)")
+                self.announceAccessibility("Link request: \(target.type.rawValue)\(String(format: "%03d", target.number)) module \(target.module)")
+                // Play "linking" announcement
+                if let player = bridge.announcementPlayer {
+                    let frames = player.linkingAnnouncement()
+                    bridge.playAnnouncement(frames, callsign: self.myCallsign)
+                }
+                // Disconnect current if connected
+                if self.connectionState != .disconnected {
+                    self.disconnect()
+                    // Brief delay for clean disconnect
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+                self.connect(to: target)
+            }
+        }
+
+        bridge.onUnlinkRequest = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.connectionLog.append("[urcall] Unlink request")
+                self.announceAccessibility("Unlink request")
+                self.disconnect()
+                // Play "not linked" announcement after disconnect
+                if let player = bridge.announcementPlayer {
+                    let frames = player.unlinkedAnnouncement()
+                    bridge.playAnnouncement(frames, callsign: self.myCallsign)
+                }
+            }
+        }
+
+        bridge.onInfoRequest = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                let info: String
+                if let target = self.connectedReflector {
+                    info = "Connected to \(target.type.rawValue)\(String(format: "%03d", target.number)) module \(target.module)"
+                    // Play linked announcement with reflector details
+                    if let player = bridge.announcementPlayer {
+                        let frames = player.linkedAnnouncement(
+                            type: target.type.rawValue,
+                            number: target.number,
+                            module: target.module
+                        )
+                        bridge.playAnnouncement(frames, callsign: self.myCallsign)
+                    }
+                } else {
+                    info = "Not connected to any reflector"
+                    // Play "not linked" announcement
+                    if let player = bridge.announcementPlayer {
+                        let frames = player.unlinkedAnnouncement()
+                        bridge.playAnnouncement(frames, callsign: self.myCallsign)
+                    }
+                }
+                self.connectionLog.append("[urcall] Info request: \(info)")
+                self.announceAccessibility(info)
+            }
+        }
+
+        bridge.onEchoRequest = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.connectionLog.append("[urcall] Echo test request")
+                self.announceAccessibility("Echo test requested")
+            }
+        }
+
         self.mmdvmTransport = transport
         self.mmdvmBridge = bridge
         self.isDirectRFCOMM = useDirectRFCOMM
@@ -689,6 +760,17 @@ final class ReflectorStore: ObservableObject {
                             self.mmdvmBridge?.reflectorCallsign = name
                             self.mmdvmBridge?.reflectorModule = target.module
                         }
+                        // Play "linked" announcement BEFORE attaching reflector
+                        // so the announcement doesn't compete with incoming traffic
+                        if let target = self.connectedReflector,
+                           let player = self.mmdvmBridge?.announcementPlayer {
+                            let frames = player.linkedAnnouncement(
+                                type: target.type.rawValue,
+                                number: target.number,
+                                module: target.module
+                            )
+                            self.mmdvmBridge?.playAnnouncement(frames, callsign: self.myCallsign)
+                        }
                         // Attach reflector to MMDVM bridge
                         self.mmdvmBridge?.attachReflector(client)
                     } else {
@@ -699,6 +781,14 @@ final class ReflectorStore: ObservableObject {
                     }
 
                 case .disconnected:
+                    // Play "not linked" announcement before clearing state
+                    // (bridge must still be ready/bridging to send)
+                    if self.gatewayMode == .mmdvmTerminal,
+                       let player = self.mmdvmBridge?.announcementPlayer {
+                        let frames = player.unlinkedAnnouncement()
+                        self.mmdvmBridge?.playAnnouncement(frames, callsign: self.myCallsign)
+                    }
+
                     self.statusMessage = "Disconnected"
                     self.connectedReflector = nil
                     self.currentRXStreamID = nil

@@ -4,6 +4,9 @@ import Foundation
 #if canImport(mbelib)
 import mbelib
 #endif
+#if canImport(ambe_encoder)
+import ambe_encoder
+#endif
 
 /// Decodes and encodes AMBE 3600x2450 voice frames used by D-STAR.
 /// Each frame is 9 bytes (72 bits) of AMBE data → 160 PCM samples (20ms @ 8kHz).
@@ -14,17 +17,20 @@ final class AMBECodec: @unchecked Sendable {
     private var curMp = mbe_parms()
     private var prevMp = mbe_parms()
     private var prevMpEnhanced = mbe_parms()
+    private var encoderState = ambe_encoder_state()
 
     /// Quality setting for mbelib synthesis (3 = best, 1 = fastest).
     private let uvQuality: Int32 = 3
 
     init() {
         mbe_initMbeParms(&curMp, &prevMp, &prevMpEnhanced)
+        ambe_encoder_init(&encoderState)
     }
 
     /// Reset codec state (call between transmissions).
     func reset() {
         mbe_initMbeParms(&curMp, &prevMp, &prevMpEnhanced)
+        ambe_encoder_init(&encoderState)
     }
 
     // MARK: - Decode (AMBE → PCM)
@@ -130,13 +136,18 @@ final class AMBECodec: @unchecked Sendable {
     // MARK: - Encode (PCM → AMBE)
 
     /// Encode 160 Int16 PCM samples into a 9-byte AMBE 3600x2450 frame.
-    /// Note: mbelib does not have a native encoder. This produces a basic vocoder
-    /// approximation by analyzing the PCM and selecting the closest AMBE parameters.
-    /// For MVP, we use a silence frame when encoding is needed, and will improve later.
+    /// Uses the open-source AMBE encoder (ambe_encoder C library).
     func encode(pcm: [Int16]) -> Data {
-        // mbelib is decode-only for AMBE. For TX, we need an encoder.
-        // MVP approach: return silence AMBE frame. Full encoder is Phase 2+ work.
-        // The standard AMBE silence frame for D-STAR:
-        return Data([0x9E, 0x8D, 0x32, 0x88, 0x26, 0x1A, 0x3F, 0x61, 0xE8])
+        guard pcm.count == 160 else {
+            // Return silence frame for invalid input
+            return Data([0x9E, 0x8D, 0x32, 0x88, 0x26, 0x1A, 0x3F, 0x61, 0xE8])
+        }
+        var ambe = [UInt8](repeating: 0, count: 9)
+        pcm.withUnsafeBufferPointer { pcmPtr in
+            ambe.withUnsafeMutableBufferPointer { ambePtr in
+                ambe_encode_frame(&encoderState, pcmPtr.baseAddress!, ambePtr.baseAddress!)
+            }
+        }
+        return Data(ambe)
     }
 }

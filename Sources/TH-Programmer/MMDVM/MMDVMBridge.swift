@@ -25,6 +25,12 @@ final class MMDVMBridge: @unchecked Sendable {
     var onHeaderReceived: ((String) -> Void)?
     var onError: ((String) -> Void)?
 
+    /// URCALL command callbacks — set by ReflectorStore to handle link/unlink/info/echo.
+    var onLinkRequest: ((ReflectorTarget) -> Void)?
+    var onUnlinkRequest: (() -> Void)?
+    var onInfoRequest: (() -> Void)?
+    var onEchoRequest: (() -> Void)?
+
     // MARK: - Properties
 
     private(set) var state: BridgeState = .idle {
@@ -48,6 +54,10 @@ final class MMDVMBridge: @unchecked Sendable {
     private var currentTXStreamID: UInt16?
     private var txFrameCounter: UInt8 = 0
 
+    /// When true, the current TX is a URCALL command — suppress forwarding to reflector.
+    /// Set in handleRadioHeader() when a command is detected, cleared in handleRadioEOT().
+    private var isCommandTX: Bool = false
+
     /// Timeout for MMDVM probe response.
     private static let probeTimeout: TimeInterval = 10.0
 
@@ -69,6 +79,12 @@ final class MMDVMBridge: @unchecked Sendable {
     /// Whether the user explicitly stopped (suppresses reconnect).
     private var userStopped = false
 
+    /// Announcement player — loads pre-recorded AMBE words from disk.
+    private(set) var announcementPlayer: AnnouncementPlayer?
+
+    /// Announcement sender — sends AMBE frames to the radio via MMDVM.
+    private var announcementSender: AnnouncementSender?
+
     /// Periodic GET_STATUS timer to keep the MMDVM/RFCOMM connection alive.
     private var keepaliveTimer: DispatchSourceTimer?
 
@@ -80,6 +96,25 @@ final class MMDVMBridge: @unchecked Sendable {
 
     init(transport: any MMDVMTransport) {
         self.transport = transport
+
+        // Try to load announcement AMBE files from known locations
+        let execDir = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+        var candidates = [
+            execDir.appendingPathComponent("../Resources/Announcements").standardized.path,
+            execDir.appendingPathComponent("../../Resources/Announcements").standardized.path,
+        ]
+        if let resourcePath = Bundle.main.resourcePath {
+            candidates.append(resourcePath + "/Announcements")
+        }
+
+        for dir in candidates {
+            if let player = AnnouncementPlayer(directory: dir) {
+                self.announcementPlayer = player
+                break
+            }
+        }
+
+        self.announcementSender = AnnouncementSender(transport: transport, queue: bridgeQueue)
     }
 
     // MARK: - Start / Stop
@@ -356,21 +391,64 @@ final class MMDVMBridge: @unchecked Sendable {
     var reflectorCallsign: String = ""
     var reflectorModule: Character = "A"
 
-    /// Radio started a TX — rewrite RPT1/RPT2 in the raw header and forward.
+    /// Radio started a TX — inspect URCALL for commands, then rewrite RPT1/RPT2 and forward.
     /// The radio sends DIRECT in RPT1/RPT2 (terminal mode). The reflector needs
     /// proper routing fields to process the stream:
     ///   RPT1 = our callsign + module (e.g. "AI5OS  C")
     ///   RPT2 = reflector + module (e.g. "REF001 C")
     /// CRC is recalculated after rewriting.
     private func handleRadioHeader(_ payload: Data) {
-        guard let client = reflectorClient, state == .bridging else { return }
         guard payload.count >= 41 else { return }
 
         let header = DVFrame.headerFromMMDVM(payload)
         if let header {
-            onError?("📡 TX → reflector: MY=\(header.myCall) YOUR=\(header.yourCall) RPT1=\(header.rpt1) RPT2=\(header.rpt2)")
+            onError?("📡 TX HEADER: MY=\(header.myCall) YOUR=\(header.yourCall) RPT1=\(header.rpt1) RPT2=\(header.rpt2)")
             onHeaderReceived?(header.myCall)
         }
+
+        // Parse URCALL for link/unlink/info/echo commands
+        let yourCall = header?.yourCall ?? ""
+        // Reconstruct the raw 8-char YOUR field (with spaces) from payload offset 19-26
+        let rawYourCall: String
+        if payload.count >= 27 {
+            rawYourCall = String(bytes: payload[(payload.startIndex + 19)..<(payload.startIndex + 27)], encoding: .ascii) ?? yourCall
+        } else {
+            rawYourCall = yourCall
+        }
+        let command = URCALLCommand.parse(rawYourCall)
+
+        switch command {
+        case .voice:
+            // Normal traffic — continue to forward below
+            isCommandTX = false
+
+        case .link(let target):
+            isCommandTX = true
+            onError?("🔗 URCALL LINK command: \(target.type.rawValue)\(String(format: "%03d", target.number)) module \(target.module)")
+            onLinkRequest?(target)
+            return
+
+        case .unlink:
+            isCommandTX = true
+            onError?("🔗 URCALL UNLINK command")
+            onUnlinkRequest?()
+            return
+
+        case .info:
+            isCommandTX = true
+            onError?("🔗 URCALL INFO command")
+            onInfoRequest?()
+            return
+
+        case .echo:
+            isCommandTX = true
+            onError?("🔗 URCALL ECHO command")
+            onEchoRequest?()
+            return
+        }
+
+        // Normal voice — forward to reflector
+        guard let client = reflectorClient, state == .bridging else { return }
 
         // Rewrite RPT1/RPT2 but preserve YOUR exactly as the radio sends it.
         // The radio sends YOUR="       E" (E in position 8) — this is correct
@@ -407,8 +485,11 @@ final class MMDVMBridge: @unchecked Sendable {
     /// Counter for TX voice frames forwarded to the reflector.
     private var txVoiceForwardCount = 0
 
-    /// Radio sent a voice frame — forward to network.
+    /// Radio sent a voice frame — forward to network (unless this TX is a URCALL command).
     private func handleRadioVoice(_ payload: Data) {
+        // Suppress forwarding for command TXs (link, unlink, info, echo)
+        if isCommandTX { return }
+
         guard let client = reflectorClient, state == .bridging else {
             if txVoiceForwardCount == 0 {
                 onError?("⚠️ TX VOICE DROPPED: client=\(reflectorClient == nil ? "nil" : "ok") state=\(state)")
@@ -439,8 +520,17 @@ final class MMDVMBridge: @unchecked Sendable {
         txFrameCounter = (txFrameCounter + 1) % DExtraProtocol.framesPerSuperframe
     }
 
-    /// Radio ended TX — send last frame to network.
+    /// Radio ended TX — send last frame to network (unless this TX was a URCALL command).
     private func handleRadioEOT() {
+        // If this TX was a command, just reset the flag and skip forwarding
+        if isCommandTX {
+            isCommandTX = false
+            currentTXStreamID = nil
+            txFrameCounter = 0
+            txVoiceForwardCount = 0
+            return
+        }
+
         guard let client = reflectorClient, state == .bridging else { return }
         guard let streamID = currentTXStreamID else { return }
 
@@ -456,6 +546,25 @@ final class MMDVMBridge: @unchecked Sendable {
         currentTXStreamID = nil
         txFrameCounter = 0
         txVoiceForwardCount = 0
+    }
+
+    // MARK: - Announcements
+
+    /// Play a pre-recorded AMBE announcement through the radio speaker.
+    /// Safe to call from any thread — dispatches to bridgeQueue.
+    /// - Parameter frames: Array of 9-byte AMBE Data frames
+    /// - Parameter callsign: Optional callsign for the header MY field
+    func playAnnouncement(_ frames: [Data], callsign: String? = nil) {
+        guard !frames.isEmpty else { return }
+        guard state == .ready || state == .bridging else { return }
+        // Don't interrupt active RX
+        guard currentRXStreamID == nil else { return }
+
+        bridgeQueue.async { [weak self] in
+            guard let self else { return }
+            self.announcementSender?.myCallsign = callsign ?? "ANNC"
+            self.announcementSender?.sendAnnouncement(frames: frames, callsign: callsign)
+        }
     }
 
     // MARK: - Network Voice Handling (network → radio)

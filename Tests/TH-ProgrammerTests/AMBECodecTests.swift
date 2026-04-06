@@ -70,11 +70,12 @@ final class AMBECodecTests: XCTestCase {
         XCTAssertEqual(encoded.count, 9)
     }
 
-    func testEncode_returnsSilenceFrame() {
+    func testEncode_returnsValidFrame() {
         let codec = AMBECodec()
         let pcm = [Int16](repeating: 100, count: 160)
         let encoded = codec.encode(pcm: pcm)
-        let expectedSilence = Data([0x9E, 0x8D, 0x32, 0x88, 0x26, 0x1A, 0x3F, 0x61, 0xE8])
-        XCTAssertEqual(encoded, expectedSilence)
+        // Now that we have a real encoder, the output should be a valid 9-byte frame
+        // (no longer the hardcoded silence stub)
+        XCTAssertEqual(encoded.count, 9)
     }
 }
