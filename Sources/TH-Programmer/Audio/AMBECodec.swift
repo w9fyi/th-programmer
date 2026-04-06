@@ -72,7 +72,8 @@ final class AMBECodec: @unchecked Sendable {
                                              CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar,
                                              CChar, CChar, CChar, CChar, CChar, CChar, CChar, CChar).self,
                                         capacity: 4)
-                        mbe_processAmbe3600x2450Frame(
+                        // D-STAR uses AMBE 3600x2400, NOT 3600x2450 (which is DMR)
+                        mbe_processAmbe3600x2400Frame(
                             outPtr.baseAddress!, &errs, &errs2,
                             errPtr.baseAddress!,
                             fr2d, dPtr.baseAddress!,
@@ -121,11 +122,13 @@ final class AMBECodec: @unchecked Sendable {
     ]
 
     /// Deinterleave 9 bytes (72 bits) of AMBE data into the ambe_fr[4][24] bit matrix.
-    /// Uses the DSD dW/dX tables and LSB-first bit extraction (D-STAR transmits LSB-first).
+    /// Uses the DSD/DroidStar dW/dX tables with LSB-first bit extraction.
+    /// D-STAR AMBE uses LSB-first: bit 0 = LSB of byte 0 (confirmed by DroidStar process_2400x1200).
+    /// Note: DMR/P25 AMBE+2 uses MSB-first — these are different!
     private func deinterleaveAmbe3600x2450(bytes: [UInt8], ambe_fr: inout [[CChar]]) {
         for bitIndex in 0..<72 {
             let byteIndex = bitIndex / 8
-            let bitOffset = bitIndex % 8  // LSB-first (D-STAR bit ordering)
+            let bitOffset = bitIndex % 8  // LSB-first (D-STAR bit ordering, per DroidStar)
             let bit = CChar((bytes[byteIndex] >> bitOffset) & 1)
             let row = Self.dW[bitIndex]
             let col = Self.dX[bitIndex]

@@ -58,6 +58,12 @@ final class MMDVMBridge: @unchecked Sendable {
     /// Set in handleRadioHeader() when a command is detected, cleared in handleRadioEOT().
     private var isCommandTX: Bool = false
 
+    /// True when the current command TX is an echo test — voice frames are captured, not discarded.
+    private var isEchoTX: Bool = false
+
+    /// Buffer of captured AMBE frames during echo TX (each 9 bytes).
+    private var echoBuffer: [Data] = []
+
     /// Timeout for MMDVM probe response.
     private static let probeTimeout: TimeInterval = 10.0
 
@@ -442,7 +448,9 @@ final class MMDVMBridge: @unchecked Sendable {
 
         case .echo:
             isCommandTX = true
-            onError?("🔗 URCALL ECHO command")
+            isEchoTX = true
+            echoBuffer = []
+            onError?("🔗 URCALL ECHO command — recording")
             onEchoRequest?()
             return
         }
@@ -487,7 +495,15 @@ final class MMDVMBridge: @unchecked Sendable {
 
     /// Radio sent a voice frame — forward to network (unless this TX is a URCALL command).
     private func handleRadioVoice(_ payload: Data) {
-        // Suppress forwarding for command TXs (link, unlink, info, echo)
+        // Echo TX: capture AMBE data into buffer for playback after EOT
+        if isEchoTX {
+            // MMDVM voice payload is 12 bytes: 9 AMBE + 3 slow data
+            if payload.count >= 9 {
+                echoBuffer.append(Data(payload.prefix(9)))
+            }
+            return
+        }
+        // Suppress forwarding for other command TXs (link, unlink, info)
         if isCommandTX { return }
 
         guard let client = reflectorClient, state == .bridging else {
@@ -522,7 +538,25 @@ final class MMDVMBridge: @unchecked Sendable {
 
     /// Radio ended TX — send last frame to network (unless this TX was a URCALL command).
     private func handleRadioEOT() {
-        // If this TX was a command, just reset the flag and skip forwarding
+        // Echo TX: play back captured frames after a brief pause
+        if isEchoTX {
+            let captured = echoBuffer
+            echoBuffer = []
+            isEchoTX = false
+            isCommandTX = false
+            currentTXStreamID = nil
+            txFrameCounter = 0
+            txVoiceForwardCount = 0
+            onError?("🔊 ECHO playback: \(captured.count) frames (\(captured.count * 20)ms)")
+            if !captured.isEmpty {
+                // Brief pause before playback so the radio settles after TX→RX transition
+                bridgeQueue.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.announcementSender?.sendAnnouncement(frames: captured, callsign: "ECHO")
+                }
+            }
+            return
+        }
+        // If this TX was another command, just reset the flag and skip forwarding
         if isCommandTX {
             isCommandTX = false
             currentTXStreamID = nil
