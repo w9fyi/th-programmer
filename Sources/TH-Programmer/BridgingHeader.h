@@ -6,3 +6,4 @@
 //
 
 #import "../mbelib/include/mbelib.h"
+#import "../ambe_encoder/include/ambe_encode.h"

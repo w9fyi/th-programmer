@@ -65,17 +65,14 @@ final class THD75Connection {
 
     private let portPath: String
     private var port: SerialPort
+    let model: RadioModel
 
-    // Wire protocol (CHIRP thd74.py, confirmed working): 256-byte payload per block.
-    // TH-D75 image = 172,800 bytes = 675 blocks × 256 bytes.
-    // (The Java programmer presents 1280×135 logically, but the radio uses 256-byte
-    //  blocks on the wire — as confirmed by the ACK arriving at byte 257 not byte 136.)
-    private static let protoBlocks    = 675
+    // Wire protocol: 256-byte payload per block (same for both models).
     private static let protoBlockSize = 256
-    private static let protoImageSize = 172_800
 
-    init(portPath: String) {
+    init(portPath: String, model: RadioModel = .d74) {
         self.portPath = portPath
+        self.model = model
         self.port = SerialPort(path: portPath)
     }
 
@@ -139,17 +136,15 @@ final class THD75Connection {
         }
         THD75Log.note("clone mode entry: \(omStr.contains("0M") ? "0M echo" : "=== ready")")
 
-        // Switch to 57600 baud — the radio uses 9600 only for the ComInfo commands.
-        // After the 0M echo the radio switches its own UART to 57600; we must match.
-        // CHIRP (thd74.py) does exactly this: pipe.baudrate = 57600 immediately after
-        // the 0M echo, before any block I/O.
-        try port.setBaudRate(57600, hardwareFlowControl: false, twoStopBits: false)
-        THD75Log.note("baud switched to 57600")
-
-        // Give the radio and the USB CDC-ACM SET_LINE_CODING request time to
-        // propagate before download() starts reading the "ready" byte.
-        Thread.sleep(forTimeInterval: 0.15)
-        THD75Log.note("open() complete")
+        // D74 switches to 57600 after 0M echo (CHIRP thd74.py behavior — unverified by us).
+        // D75 stays at 9600 — switching to 57600 crashes it into MCP error mode.
+        // (Reference: thd75 lib radio/programming.rs)
+        if model.cloneSwitchesBaud {
+            try port.setBaudRate(model.cloneBaudRate, hardwareFlowControl: false, twoStopBits: false)
+            THD75Log.note("baud switched to \(model.cloneBaudRate)")
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        THD75Log.note("open() complete — model=\(model)")
     }
 
     /// Send a text command and read a fixed number of bytes back (no line terminator assumed).
@@ -319,8 +314,9 @@ final class THD75Connection {
         }
 
         // ── Block loop ───────────────────────────────────────────────────────
-        var raw = Data(capacity: Self.protoImageSize)
-        let total = Self.protoBlocks
+        let expectedSize = model.cloneImageSize
+        var raw = Data(capacity: expectedSize)
+        let total = model.cloneBlocks
 
         for block in 0..<total {
             let blockData = try readBlock(block)
@@ -331,13 +327,13 @@ final class THD75Connection {
         try port.write(Data([UInt8(ascii: "E")]))
         THD75Log.note("download complete: \(raw.count) bytes in \(total) blocks")
 
-        // Pad or trim to exactly protoImageSize so MemoryMap gets a consistent buffer.
-        if raw.count < Self.protoImageSize {
-            THD75Log.note("WARNING: image short by \(Self.protoImageSize - raw.count) bytes — padding with 0xFF")
-            raw.append(contentsOf: Array(repeating: UInt8(0xFF), count: Self.protoImageSize - raw.count))
-        } else if raw.count > Self.protoImageSize {
-            THD75Log.note("WARNING: image long by \(raw.count - Self.protoImageSize) bytes — trimming")
-            raw = raw.prefix(Self.protoImageSize)
+        // Pad or trim to exactly expectedSize so MemoryMap gets a consistent buffer.
+        if raw.count < expectedSize {
+            THD75Log.note("WARNING: image short by \(expectedSize - raw.count) bytes — padding with 0xFF")
+            raw.append(contentsOf: Array(repeating: UInt8(0xFF), count: expectedSize - raw.count))
+        } else if raw.count > expectedSize {
+            THD75Log.note("WARNING: image long by \(raw.count - expectedSize) bytes — trimming")
+            raw = raw.prefix(expectedSize)
         }
         return MemoryMap(data: raw)
     }
@@ -347,7 +343,7 @@ final class THD75Connection {
     /// Upload a memory image to the radio.
     /// Calls `progress` periodically. Runs synchronously — call from a background thread.
     func upload(_ map: MemoryMap, progress: ((CloneProgress) -> Void)? = nil) throws {
-        let total = Self.protoBlocks
+        let total = model.cloneBlocks
 
         for block in 0..<total {
             try writeBlock(block, map: map.raw)
@@ -470,11 +466,12 @@ extension THD75Connection {
 
     /// Open + diagnose on a background thread. Results written to /tmp/thd75_swift.log.
     static func asyncDiagnose(
-        portPath: String
+        portPath: String,
+        model: RadioModel = .d74
     ) async throws {
         return try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
-                let conn = THD75Connection(portPath: portPath)
+                let conn = THD75Connection(portPath: portPath, model: model)
                 do {
                     try conn.open()
                     conn.diagnose()
@@ -491,11 +488,12 @@ extension THD75Connection {
     /// Open + download on a background thread. Progress sent via `AsyncStream`.
     static func asyncDownload(
         portPath: String,
+        model: RadioModel = .d74,
         onProgress: @escaping @Sendable (CloneProgress) -> Void
     ) async throws -> MemoryMap {
         return try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
-                let conn = THD75Connection(portPath: portPath)
+                let conn = THD75Connection(portPath: portPath, model: model)
                 do {
                     try conn.open()
                     let map = try conn.download(progress: onProgress)
@@ -512,12 +510,13 @@ extension THD75Connection {
     /// Open + upload on a background thread.
     static func asyncUpload(
         portPath: String,
+        model: RadioModel = .d74,
         map: MemoryMap,
         onProgress: @escaping @Sendable (CloneProgress) -> Void
     ) async throws {
         return try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
-                let conn = THD75Connection(portPath: portPath)
+                let conn = THD75Connection(portPath: portPath, model: model)
                 do {
                     try conn.open()
                     try conn.upload(map, progress: onProgress)

@@ -23,6 +23,10 @@ targets:
         headerVisibility: project
         compilerFlags:
           - "-w"
+      - path: Sources/ambe_encoder
+        headerVisibility: project
+        compilerFlags:
+          - "-w"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ai5os.th-programmer
@@ -39,6 +43,8 @@ targets:
         HEADER_SEARCH_PATHS:
           - $(PROJECT_DIR)/Sources/mbelib
           - $(PROJECT_DIR)/Sources/mbelib/include
+          - $(PROJECT_DIR)/Sources/ambe_encoder
+          - $(PROJECT_DIR)/Sources/ambe_encoder/include
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
       configs:
         Debug:

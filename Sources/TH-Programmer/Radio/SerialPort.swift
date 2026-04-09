@@ -5,7 +5,7 @@ import Foundation
 import IOKit
 import IOKit.serial
 
-final class SerialPort {
+final class SerialPort: RadioPort {
 
     let path: String
     private var fd: Int32 = -1
