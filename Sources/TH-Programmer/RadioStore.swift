@@ -31,6 +31,7 @@ final class RadioStore: ObservableObject {
         let port: String
         let model: String       // "TH-D74" or "TH-D75"
         let via: Via
+        let bluetoothAddress: String?  // MAC address for direct RFCOMM
         enum Via { case usb, bluetooth }
     }
     @Published var detectedRadio: RadioDetection?
@@ -133,7 +134,7 @@ final class RadioStore: ObservableObject {
             guard let self else { return }
             // Don't re-announce if we already show this port
             guard self.detectedRadio?.port != radio.port else { return }
-            self.detectedRadio = RadioDetection(port: radio.port, model: radio.model, via: .usb)
+            self.detectedRadio = RadioDetection(port: radio.port, model: radio.model, via: .usb, bluetoothAddress: nil)
             self.refreshPorts()
             self.announceAccessibility("\(radio.model) detected via USB. Activate the banner to select it.")
         }
@@ -150,7 +151,7 @@ final class RadioStore: ObservableObject {
         bluetooth.onRadioConnected = { [weak self] radio in
             guard let self, let port = radio.portPath else { return }
             guard self.detectedRadio?.port != port else { return }
-            self.detectedRadio = RadioDetection(port: port, model: radio.name, via: .bluetooth)
+            self.detectedRadio = RadioDetection(port: port, model: radio.name, via: .bluetooth, bluetoothAddress: radio.addressString)
             self.refreshPorts()
             self.announceAccessibility("\(radio.name) detected via Bluetooth. Activate the banner to select it.")
         }
@@ -220,7 +221,8 @@ final class RadioStore: ObservableObject {
         progress = CloneProgress(message: "Connecting…", current: 0, total: 1)
         errorMessage = nil
         do {
-            let map = try await THD75Connection.asyncDownload(portPath: portPath) { [weak self] p in
+            let radioModel = RadioModel(idResponse: detectedRadio?.model ?? "")
+            let map = try await THD75Connection.asyncDownload(portPath: portPath, model: radioModel) { [weak self] p in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.progress = p
@@ -256,7 +258,8 @@ final class RadioStore: ObservableObject {
         errorMessage = nil
         statusMessage = "Diagnostic running — see /tmp/thd75_swift.log"
         do {
-            try await THD75Connection.asyncDiagnose(portPath: portPath)
+            let radioModel = RadioModel(idResponse: detectedRadio?.model ?? "")
+            try await THD75Connection.asyncDiagnose(portPath: portPath, model: radioModel)
             statusMessage = "Diagnostic complete — open /tmp/thd75_swift.log"
             announceAccessibility("Protocol diagnostic complete. Check log file at /tmp/thd75_swift.log")
         } catch {
@@ -283,7 +286,8 @@ final class RadioStore: ObservableObject {
         progress = CloneProgress(message: "Connecting…", current: 0, total: 1)
         errorMessage = nil
         do {
-            try await THD75Connection.asyncUpload(portPath: portPath, map: map) { [weak self] p in
+            let radioModel = RadioModel(idResponse: detectedRadio?.model ?? "")
+            try await THD75Connection.asyncUpload(portPath: portPath, model: radioModel, map: map) { [weak self] p in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.progress = p
@@ -422,15 +426,39 @@ final class RadioStore: ObservableObject {
     // MARK: - Live CAT
 
     func connectLive() async {
-        guard !portPath.isEmpty else {
-            errorMessage = "No serial port selected."
-            return
-        }
         guard !liveConnected else { return }
         statusMessage = "Connecting live…"
         errorMessage = nil
+
+        // Resolve Bluetooth address: prefer detectedRadio, fall back to
+        // BluetoothManager.radios (the radio may be listed but not yet
+        // "detected" because the broken virtual serial port never appeared).
+        let btAddress: String? = detectedRadio?.bluetoothAddress
+            ?? bluetooth.radios.first(where: { !$0.addressString.isEmpty })?.addressString
+        let btRadioName = detectedRadio?.model
+            ?? bluetooth.radios.first?.name
+        let useBluetooth = btAddress != nil && (
+            detectedRadio?.via == .bluetooth ||
+            (detectedRadio == nil && btAddress != nil)
+        )
+
+        print("[connectLive] port=\(portPath) useBluetooth=\(useBluetooth) btAddr=\(btAddress ?? "nil") btName=\(btRadioName ?? "nil") detectedVia=\(String(describing: detectedRadio?.via))")
+
         do {
-            let conn = try await THD75LiveConnection.asyncConnect(portPath: portPath)
+            let radioModel = RadioModel(idResponse: btRadioName ?? detectedRadio?.model ?? "")
+            let conn: THD75LiveConnection
+            if useBluetooth, let btAddress {
+                print("[connectLive] RFCOMM path — address=\(btAddress)")
+                bluetooth.releaseRFCOMMChannel()
+                conn = try await THD75LiveConnection.asyncConnectRFCOMM(address: btAddress, model: radioModel)
+            } else {
+                guard !portPath.isEmpty else {
+                    errorMessage = "No serial port selected and no Bluetooth radio found."
+                    return
+                }
+                print("[connectLive] serial path — port=\(portPath)")
+                conn = try await THD75LiveConnection.asyncConnect(portPath: portPath, model: radioModel)
+            }
             liveConnection = conn
             liveConnected = true
             // Forward NMEA sentences to the position parser on the main thread
@@ -922,7 +950,14 @@ final class RadioStore: ObservableObject {
             }
 
             do {
-                let conn = try await THD75LiveConnection.asyncConnect(portPath: portPath)
+                let radioModel = RadioModel(idResponse: detectedRadio?.model ?? "")
+                let conn: THD75LiveConnection
+                if let btAddress = detectedRadio?.bluetoothAddress, detectedRadio?.via == .bluetooth {
+                    bluetooth.releaseRFCOMMChannel()
+                    conn = try await THD75LiveConnection.asyncConnectRFCOMM(address: btAddress, model: radioModel)
+                } else {
+                    conn = try await THD75LiveConnection.asyncConnect(portPath: portPath, model: radioModel)
+                }
                 liveConnection = conn
                 liveConnected = true
                 isReconnecting = false

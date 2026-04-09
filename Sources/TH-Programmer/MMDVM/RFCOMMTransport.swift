@@ -41,7 +41,7 @@ final class RFCOMMTransport: NSObject, MMDVMTransport, IOBluetoothRFCOMMChannelD
     static let maxConnectAttempts = 10
 
     /// Log file for connection diagnostics.
-    private static let logPath = "/Users/justinmann/Desktop/rfcomm_connect.log"
+    private static let logPath = NSTemporaryDirectory() + "rfcomm_connect.log"
 
     private func log(_ message: String) {
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"

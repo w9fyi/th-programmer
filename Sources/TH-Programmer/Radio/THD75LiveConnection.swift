@@ -27,6 +27,12 @@ struct LiveRadioState: Equatable, Sendable {
     var shift: UInt8 = 0            // 0 = simplex, 1 = +offset, 2 = –offset
     var offsetHz: Int = 0           // repeater offset in Hz
     var mode: UInt8 = 0             // 0=FM 1=DV 2=AM 3=LSB 4=USB 5=CW 6=NFM 7=DR 8=WFM
+    var reverse: Bool = false           // reverse repeater access
+    var crossToneEnabled: Bool = false  // cross-tone enable
+    var crossToneCombo: UInt8 = 0       // cross-tone combination (0-3)
+    var dstarURCall: String = ""        // D-STAR UR callsign (8 chars)
+    var digitalSquelch: UInt8 = 0       // 0=off, 1=code, 2=callsign
+    var digitalCode: UInt8 = 0          // digital squelch code
     var busy: Bool = false          // carrier-detect flag (from BY command, not FO)
     var ptt: Bool = false           // TX state (from TX/RX command, not FO)
 
@@ -86,59 +92,85 @@ struct RadioInfoState: Equatable, Sendable {
 
 extension LiveRadioState {
 
-    /// Parse the radio's response to an `FO v\r` query.
+    /// Parse the radio's FO response. Handles both the real 21-field format
+    /// (band + 20 channel data fields per the D74/D75 CAT protocol) and a
+    /// legacy 13-field format for backwards compatibility.
     ///
-    /// Wire format (comma-separated after "FO "):
-    /// `FO v,FFFFFFFFFF,SS,0,T,C,D,TT,CC,DDD,sh,OOOOOOOO,M`
-    ///
-    /// Fields:
-    /// 0  v           – VFO (0=A, 1=B)
-    /// 1  FFFFFFFFFF  – frequency Hz, 10 digits zero-padded
-    /// 2  SS          – tuning step index, 2 digits
-    /// 3  0           – reserved
-    /// 4  T           – tone TX enable (0/1)
-    /// 5  C           – CTCSS squelch enable (0/1)
-    /// 6  D           – DCS squelch enable (0/1)
-    /// 7  TT          – tone index, 2 digits
-    /// 8  CC          – CTCSS index, 2 digits
-    /// 9  DDD         – DCS code index, 3 digits
-    /// 10 sh          – shift: 0=simplex 1=+offset 2=–offset
-    /// 11 OOOOOOOO    – offset Hz, 8 digits zero-padded
-    /// 12 M           – mode digit
+    /// Real wire layout (21 fields):
+    ///  [0]  band/vfo        [1]  RX freq 10d      [2]  TX offset 10d
+    ///  [3]  RX step          [4]  TX step           [5]  mode
+    ///  [6]  fine tune        [7]  fine step         [8]  tone enable
+    ///  [9]  CTCSS enable    [10]  DCS enable       [11]  cross-tone enable
+    /// [12]  reverse         [13]  shift direction  [14]  tone code
+    /// [15]  CTCSS code      [16]  DCS code         [17]  cross-tone combo
+    /// [18]  URCALL (8ch)    [19]  digital squelch  [20]  digital code
     init?(foResponse raw: String) {
         let stripped = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard stripped.hasPrefix("FO ") else { return nil }
         let body = String(stripped.dropFirst(3))
         let parts = body.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count >= 13 else { return nil }
 
-        vfo          = UInt8(parts[0]) ?? 0
-        frequencyHz  = Int(parts[1]) ?? 0
-        tuningStep   = UInt8(parts[2]) ?? 0
-        // parts[3] is reserved / ignored
-        toneEnabled  = parts[4] != "0"
-        ctcssEnabled = parts[5] != "0"
-        dcsEnabled   = parts[6] != "0"
-        toneIndex    = UInt8(parts[7]) ?? 0
-        ctcssIndex   = UInt8(parts[8]) ?? 0
-        dcsIndex     = UInt16(parts[9]) ?? 0
-        shift        = UInt8(parts[10]) ?? 0
-        offsetHz     = Int(parts[11]) ?? 0
-        mode         = UInt8(parts[12]) ?? 0
+        if parts.count >= 21 {
+            // Full 21-field format (real D74/D75 hardware)
+            vfo              = UInt8(parts[0]) ?? 0
+            frequencyHz      = Int(parts[1]) ?? 0
+            offsetHz         = Int(parts[2]) ?? 0
+            tuningStep       = UInt8(parts[3]) ?? 0
+            // parts[4] = TX step (unused)
+            mode             = UInt8(parts[5]) ?? 0
+            // parts[6] = fine tuning, parts[7] = fine step (unused)
+            toneEnabled      = parts[8] != "0"
+            ctcssEnabled     = parts[9] != "0"
+            dcsEnabled       = parts[10] != "0"
+            crossToneEnabled = parts[11] != "0"
+            reverse          = parts[12] != "0"
+            shift            = UInt8(parts[13]) ?? 0
+            toneIndex        = UInt8(parts[14]) ?? 0
+            ctcssIndex       = UInt8(parts[15]) ?? 0
+            dcsIndex         = UInt16(parts[16]) ?? 0
+            crossToneCombo   = UInt8(parts[17]) ?? 0
+            dstarURCall      = parts[18]
+            digitalSquelch   = UInt8(parts[19]) ?? 0
+            digitalCode      = UInt8(parts[20]) ?? 0
+        } else if parts.count >= 13 {
+            // Legacy 13-field format (backwards compat for stored data)
+            vfo          = UInt8(parts[0]) ?? 0
+            frequencyHz  = Int(parts[1]) ?? 0
+            tuningStep   = UInt8(parts[2]) ?? 0
+            // parts[3] reserved
+            toneEnabled  = parts[4] != "0"
+            ctcssEnabled = parts[5] != "0"
+            dcsEnabled   = parts[6] != "0"
+            toneIndex    = UInt8(parts[7]) ?? 0
+            ctcssIndex   = UInt8(parts[8]) ?? 0
+            dcsIndex     = UInt16(parts[9]) ?? 0
+            shift        = UInt8(parts[10]) ?? 0
+            offsetHz     = Int(parts[11]) ?? 0
+            mode         = UInt8(parts[12]) ?? 0
+        } else {
+            return nil
+        }
     }
 
     /// Build the FO set-command string (without trailing \r).
+    /// Emits the full 21-field format matching the real D74/D75 wire protocol.
     var foCommand: String {
-        let freq  = String(format: "%010d", frequencyHz)
-        let step  = String(format: "%02d",  tuningStep)
-        let tone  = toneEnabled  ? "1" : "0"
-        let ctcss = ctcssEnabled ? "1" : "0"
-        let dcs   = dcsEnabled   ? "1" : "0"
-        let toneI = String(format: "%02d",  toneIndex)
-        let ctcsI = String(format: "%02d",  ctcssIndex)
-        let dcsI  = String(format: "%03d",  dcsIndex)
-        let off   = String(format: "%08d",  offsetHz)
-        return "FO \(vfo),\(freq),\(step),0,\(tone),\(ctcss),\(dcs),\(toneI),\(ctcsI),\(dcsI),\(shift),\(off),\(mode)"
+        let freq   = String(format: "%010d", frequencyHz)
+        let offset = String(format: "%010d", offsetHz)
+        let step   = String(format: "%01d",  tuningStep)
+        let m      = String(mode)
+        let tone   = toneEnabled ? "1" : "0"
+        let ctcss  = ctcssEnabled ? "1" : "0"
+        let dcs    = dcsEnabled ? "1" : "0"
+        let cross  = crossToneEnabled ? "1" : "0"
+        let rev    = reverse ? "1" : "0"
+        let toneI  = String(format: "%02d", toneIndex)
+        let ctcsI  = String(format: "%02d", ctcssIndex)
+        let dcsI   = String(format: "%03d", dcsIndex)
+        let ur     = dstarURCall.isEmpty ? "CQCQCQ  " : dstarURCall.padding(toLength: 8, withPad: " ", startingAt: 0)
+        return "FO \(vfo),\(freq),\(offset),\(step),0,\(m),0,0," +
+               "\(tone),\(ctcss),\(dcs),\(cross),\(rev),\(shift)," +
+               "\(toneI),\(ctcsI),\(dcsI),\(crossToneCombo),\(ur),\(digitalSquelch),\(String(format: "%02d", digitalCode))"
     }
 }
 
@@ -227,19 +259,47 @@ extension ChannelMemory {
 final class THD75LiveConnection: @unchecked Sendable {
 
     private let portPath: String
-    private var port: SerialPort
+    private var port: RadioPort
+    let model: RadioModel
+
+    /// Minimum time between successive CAT commands (throttle).
+    private static let minCommandSpacing: TimeInterval = 0.005
+    private var lastCommandTime: Date?
 
     /// Called on the background I/O thread whenever a $GP* sentence is received
     /// interleaved with CAT responses. RadioStore sets this after connecting.
     var nmeaHandler: ((String) -> Void)?
 
-    init(portPath: String) {
+    /// Create a live connection using a serial port (USB or legacy BT).
+    init(portPath: String, model: RadioModel = .d74) {
         self.portPath  = portPath
+        self.model     = model
         self.port      = SerialPort(path: portPath)
     }
 
+    /// Create a live connection using a direct RFCOMM port (Bluetooth).
+    /// Bypasses the broken macOS virtual serial port driver.
+    init(rfcommAddress: String, model: RadioModel = .d75) {
+        self.portPath  = "rfcomm://\(rfcommAddress)"
+        self.model     = model
+        self.port      = RFCOMMPort(address: rfcommAddress)
+    }
+
+    /// Enforce minimum inter-command spacing to avoid overwhelming the radio's
+    /// UART buffer. The D75 firmware drops commands sent faster than ~5 ms apart.
+    /// (Reference: thd75 lib radio/mod.rs)
+    private func throttle() {
+        if let last = lastCommandTime {
+            let elapsed = Date().timeIntervalSince(last)
+            if elapsed < Self.minCommandSpacing {
+                Thread.sleep(forTimeInterval: Self.minCommandSpacing - elapsed)
+            }
+        }
+        lastCommandTime = Date()
+    }
+
     /// Whether this is a Bluetooth connection (affects reconnect behavior).
-    var isBluetooth: Bool { SerialPort.isBluetoothPort(portPath) }
+    var isBluetooth: Bool { port is RFCOMMPort || SerialPort.isBluetoothPort(portPath) }
 
     /// Non-blocking health check — returns false if the port fd is dead.
     func isHealthy() -> Bool { port.isHealthy() }
@@ -269,10 +329,16 @@ final class THD75LiveConnection: @unchecked Sendable {
     /// Open the port at 9600 8N1, identify the radio, and disable auto-info.
     func connect() throws {
         try port.open(baudRate: 9600, hardwareFlowControl: false, twoStopBits: false)
+        try connectAfterOpen()
+    }
 
-        // Bluetooth SPP virtual ports need more warm-up time than USB before
-        // the radio accepts CAT commands. Give BT ports 1.5 s, USB 250 ms.
-        let isBluetooth = SerialPort.isBluetoothPort(portPath)
+    /// CAT handshake after the port is already open.
+    /// Separated from connect() so RFCOMM can open on the main thread
+    /// and then run this on a background thread.
+    func connectAfterOpen() throws {
+        // Bluetooth needs more warm-up time than USB before
+        // the radio accepts CAT commands.
+        let isBluetooth = port is RFCOMMPort || SerialPort.isBluetoothPort(portPath)
         Thread.sleep(forTimeInterval: isBluetooth ? 1.5 : 0.25)
 
         // Flush any buffered bytes the radio sent during connection setup
@@ -307,6 +373,7 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// Query the full VFO state via the FO command.
     func getVFOState(vfo: UInt8 = 0) throws -> LiveRadioState {
+        throttle()
         try port.write(Data("FO \(vfo)\r".utf8))
         let line = try readCAT(timeout: 2.0)
         guard let state = LiveRadioState(foResponse: line) else {
@@ -317,6 +384,7 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// Write a new VFO state via the FO command.
     func setVFOState(_ state: LiveRadioState) throws {
+        throttle()
         try port.write(Data((state.foCommand + "\r").utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -332,6 +400,7 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// Set mode on the specified VFO (0=FM 1=DV 2=AM 3=LSB 4=USB 5=CW 6=NFM 7=DR).
     func setMode(_ mode: UInt8, vfo: UInt8 = 0) throws {
+        throttle()
         try port.write(Data("MD \(vfo),\(mode)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -340,12 +409,14 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// Switch which VFO is active (0=A, 1=B).
     func selectVFO(_ vfo: UInt8) throws {
+        throttle()
         try port.write(Data("BC \(vfo)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// Query which VFO is currently selected.
     func activeVFO() throws -> UInt8 {
+        throttle()
         try port.write(Data("BC\r".utf8))
         let line = try readCAT(timeout: 1.0)
         // Response: "BC v"
@@ -357,6 +428,7 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// Step the frequency up or down by one tuning step.
     func stepFrequency(up: Bool) throws {
+        throttle()
         try port.write(Data((up ? "UP\r" : "DW\r").utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -364,20 +436,23 @@ final class THD75LiveConnection: @unchecked Sendable {
     // MARK: - PTT
 
     /// Key or unkey the transmitter.
-    func ptt(on: Bool) throws {
-        try port.write(Data((on ? "TX\r" : "RX\r").utf8))
+    func ptt(on: Bool, band: UInt8 = 0) throws {
+        throttle()
+        try port.write(Data((on ? "TX \(band)\r" : "RX \(band)\r").utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     // MARK: - Squelch
 
-    /// Set squelch level. Hardware-verified range: 0–5 (decimal).
+    /// Set squelch level. Range: 0–6.
     func setSquelch(level: UInt8, vfo: UInt8 = 0) throws {
-        try port.write(Data("SQ \(vfo),\(min(level, 5))\r".utf8))
+        throttle()
+        try port.write(Data("SQ \(vfo),\(min(level, 6))\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     func getSquelch(vfo: UInt8 = 0) throws -> UInt8 {
+        throttle()
         try port.write(Data("SQ \(vfo)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         // Response: "SQ v,d" — decimal digit
@@ -388,6 +463,7 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// True when a carrier is present on the specified VFO.
     func getBusy(vfo: UInt8 = 0) throws -> Bool {
+        throttle()
         try port.write(Data("BY \(vfo)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         // Response: "BY v,b"
@@ -402,8 +478,10 @@ final class THD75LiveConnection: @unchecked Sendable {
     /// Only writes regular channels (0–999); extended channels are skipped.
     func writeLiveChannel(_ channel: ChannelMemory) throws {
         guard !channel.isExtended else { return }
+        throttle()
         try port.write(Data((channel.meCommand + "\r").utf8))
         _ = try? readCAT(timeout: 1.0)
+        throttle()
         try port.write(Data((channel.mnCommand + "\r").utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -411,6 +489,7 @@ final class THD75LiveConnection: @unchecked Sendable {
     // MARK: - Radio Settings (AG, BL, BS, PS, VX, CS, DL, LC, VG, VD, SM, RA, SH, SF, VM, MR, TN, PT, MS, GP, GS)
 
     func getAFGain() throws -> UInt8 {
+        throttle()
         try port.write(Data("AG\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseAGResponse(line) ?? 69
@@ -418,12 +497,14 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// Set AF gain. Hardware-verified range: 0–200.
     func setAFGain(_ gain: UInt8) throws {
+        throttle()
         try port.write(Data(String(format: "AG %03d\r", min(gain, 200)).utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// BL = Battery level (read-only). 0=empty, 1=low, 2=moderate, 3=full, 4=charging.
     func getBatteryLevel() throws -> UInt8 {
+        throttle()
         try port.write(Data("BL\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseBLResponse(line) ?? 0
@@ -431,35 +512,41 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// BS = Bar antenna select. 0=external, 1=internal. Hardware-verified RW.
     func getBarAntenna() throws -> UInt8 {
+        throttle()
         try port.write(Data("BS\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseSingleDigitResponse("BS", line) ?? 1
     }
 
     func setBarAntenna(_ value: UInt8) throws {
+        throttle()
         try port.write(Data("BS \(value)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// PS = Power save (read-only via CAT — write returns ?). 0=off, 1=on.
     func getPowerSave() throws -> UInt8 {
+        throttle()
         try port.write(Data("PS\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parsePSResponse(line) ?? 0
     }
 
     func getVOX() throws -> Bool {
+        throttle()
         try port.write(Data("VX\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseVXResponse(line) ?? false
     }
 
     func setVOX(_ on: Bool) throws {
+        throttle()
         try port.write(Data("VX \(on ? 1 : 0)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     func getCallsign() throws -> String {
+        throttle()
         try port.write(Data("CS\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseCSResponse(line) ?? ""
@@ -467,60 +554,70 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     func setCallsign(_ call: String) throws {
         let trimmed = String(call.uppercased().prefix(9))
+        throttle()
         try port.write(Data("CS \(trimmed)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// DL = Dual/single band mode. 0=dual, 1=single. Hardware-verified RW.
     func getDualBand() throws -> Bool {
+        throttle()
         try port.write(Data("DL\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseDLResponse(line) ?? true
     }
 
     func setDualBand(_ dual: Bool) throws {
+        throttle()
         try port.write(Data("DL \(dual ? 0 : 1)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// LC = Backlight control mode. 0=manual, 1=always on, 2=auto, 3=auto DC-in. Hardware-verified RW.
     func getBacklight() throws -> UInt8 {
+        throttle()
         try port.write(Data("LC\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseSingleDigitResponse("LC", line) ?? 2
     }
 
     func setBacklight(_ mode: UInt8) throws {
+        throttle()
         try port.write(Data("LC \(mode)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// VG = VOX gain. 0–9. Hardware-verified RW.
     func getVOXGain() throws -> UInt8 {
+        throttle()
         try port.write(Data("VG\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseSingleDigitResponse("VG", line) ?? 4
     }
 
     func setVOXGain(_ gain: UInt8) throws {
+        throttle()
         try port.write(Data("VG \(min(gain, 9))\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// VD = VOX delay. 0=250ms, 1=500ms, 2=750ms, 3=1000ms, 4=1500ms, 5=2000ms, 6=3000ms. Hardware-verified RW.
     func getVOXDelay() throws -> UInt8 {
+        throttle()
         try port.write(Data("VD\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseSingleDigitResponse("VD", line) ?? 1
     }
 
     func setVOXDelay(_ delay: UInt8) throws {
+        throttle()
         try port.write(Data("VD \(min(delay, 6))\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// SM = S-meter reading (read-only). Returns signal level for the specified band.
     func getSMeter(band: UInt8 = 0) throws -> UInt8 {
+        throttle()
         try port.write(Data("SM \(band)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseBandValueResponse("SM", line)?.value ?? 0
@@ -528,54 +625,63 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// RA = Attenuator per band. 0=off, 1=on. Hardware-verified RW.
     func getAttenuator(band: UInt8 = 0) throws -> Bool {
+        throttle()
         try port.write(Data("RA \(band)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return (THD75LiveConnection.parseBandValueResponse("RA", line)?.value ?? 0) != 0
     }
 
     func setAttenuator(band: UInt8, on: Bool) throws {
+        throttle()
         try port.write(Data("RA \(band),\(on ? 1 : 0)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// SH = DSP filter width. p1: 0=SSB, 1=CW, 2=AM. p2: width index. Hardware-verified RW.
     func getFilterWidth(mode: UInt8) throws -> UInt8 {
+        throttle()
         try port.write(Data("SH \(mode)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseBandValueResponse("SH", line)?.value ?? 0
     }
 
     func setFilterWidth(mode: UInt8, width: UInt8) throws {
+        throttle()
         try port.write(Data("SH \(mode),\(width)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// SF = Tuning step per band. Step index 0–B. Hardware-verified RW.
     func getTuningStep(band: UInt8 = 0) throws -> UInt8 {
+        throttle()
         try port.write(Data("SF \(band)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseBandValueResponse("SF", line)?.value ?? 0
     }
 
     func setTuningStep(band: UInt8, step: UInt8) throws {
+        throttle()
         try port.write(Data("SF \(band),\(step)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// VM = VFO/Memory/Call mode per band. 0=VFO, 1=MR, 2=Call, 3=DV. Hardware-verified RW.
     func getVFOMemMode(band: UInt8 = 0) throws -> UInt8 {
+        throttle()
         try port.write(Data("VM \(band)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseBandValueResponse("VM", line)?.value ?? 0
     }
 
     func setVFOMemMode(band: UInt8, mode: UInt8) throws {
+        throttle()
         try port.write(Data("VM \(band),\(mode)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// MR = Memory channel recall per band. Returns channel number. Only valid in MR mode.
     func getMemoryChannel(band: UInt8 = 0) throws -> UInt16? {
+        throttle()
         try port.write(Data("MR \(band)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         if line == "N" { return nil }  // not in memory mode
@@ -584,12 +690,14 @@ final class THD75LiveConnection: @unchecked Sendable {
     }
 
     func setMemoryChannel(band: UInt8, channel: UInt16) throws {
+        throttle()
         try port.write(Data(String(format: "MR %d,%03d\r", band, channel).utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// TN = TNC mode. p1: 0=off, 1=APRS (avoid 2=KISS). p2: band. Hardware-verified RW.
     func getTNCMode() throws -> (mode: UInt8, band: UInt8) {
+        throttle()
         try port.write(Data("TN\r".utf8))
         let line = try readCAT(timeout: 1.0)
         guard let r = THD75LiveConnection.parseBandValueResponse("TN", line) else {
@@ -600,36 +708,42 @@ final class THD75LiveConnection: @unchecked Sendable {
     }
 
     func setTNCMode(mode: UInt8, band: UInt8) throws {
+        throttle()
         try port.write(Data("TN \(mode),\(band)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// PT = Beacon mode. 0=manual, 1=PTT, 2=auto, 3=SmartBeaconing. Hardware-verified RW.
     func getBeaconMode() throws -> UInt8 {
+        throttle()
         try port.write(Data("PT\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseSingleDigitResponse("PT", line) ?? 0
     }
 
     func setBeaconMode(_ mode: UInt8) throws {
+        throttle()
         try port.write(Data("PT \(mode)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// MS = APRS position source. 0=GPS, 1-5=stored positions. Hardware-verified RW.
     func getPositionSource() throws -> UInt8 {
+        throttle()
         try port.write(Data("MS\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseSingleDigitResponse("MS", line) ?? 0
     }
 
     func setPositionSource(_ source: UInt8) throws {
+        throttle()
         try port.write(Data("MS \(source)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     /// GP = GPS enable + PC output. Hardware-verified RW.
     func setGPS(enabled: Bool, pcOutput: Bool) throws {
+        throttle()
         try port.write(Data("GP \(enabled ? 1 : 0),\(pcOutput ? 1 : 0)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -638,6 +752,7 @@ final class THD75LiveConnection: @unchecked Sendable {
     func setGPSSentences(_ enables: [Bool]) throws {
         guard enables.count == 6 else { return }
         let vals = enables.map { $0 ? "1" : "0" }.joined(separator: ",")
+        throttle()
         try port.write(Data("GS \(vals)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -645,6 +760,7 @@ final class THD75LiveConnection: @unchecked Sendable {
     // MARK: - TX Power (PC command)
 
     func getTxPower(band: UInt8 = 0) throws -> UInt8 {
+        throttle()
         try port.write(Data("PC \(band)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         guard let result = THD75LiveConnection.parsePCResponse(line) else {
@@ -654,6 +770,7 @@ final class THD75LiveConnection: @unchecked Sendable {
     }
 
     func setTxPower(band: UInt8, level: UInt8) throws {
+        throttle()
         try port.write(Data("PC \(band),\(level)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -661,6 +778,7 @@ final class THD75LiveConnection: @unchecked Sendable {
     // MARK: - D-STAR Callsign Slots (DC/DS commands)
 
     func getDStarSlot(_ slot: UInt8) throws -> String {
+        throttle()
         try port.write(Data("DC \(slot)\r".utf8))
         let line = try readCAT(timeout: 1.0)
         guard let result = THD75LiveConnection.parseDCResponse(line) else {
@@ -671,11 +789,13 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     func setDStarSlot(_ slot: UInt8, callsign: String) throws {
         let cs = String(callsign.prefix(8))
+        throttle()
         try port.write(Data("DC \(slot),\(cs)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
 
     func getActiveDStarSlot() throws -> UInt8 {
+        throttle()
         try port.write(Data("DS\r".utf8))
         let line = try readCAT(timeout: 1.0)
         guard let slot = THD75LiveConnection.parseDSResponse(line) else {
@@ -685,6 +805,7 @@ final class THD75LiveConnection: @unchecked Sendable {
     }
 
     func setActiveDStarSlot(_ slot: UInt8) throws {
+        throttle()
         try port.write(Data("DS \(slot)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -693,6 +814,7 @@ final class THD75LiveConnection: @unchecked Sendable {
 
     /// Trigger an APRS beacon. Returns true on success, false if TNC is off.
     func triggerAPRSBeacon() throws -> Bool {
+        throttle()
         try port.write(Data("BE\r".utf8))
         let line = try readCAT(timeout: 2.0)
         return THD75LiveConnection.parseBEResponse(line) ?? false
@@ -701,12 +823,14 @@ final class THD75LiveConnection: @unchecked Sendable {
     // MARK: - Bluetooth (BT command)
 
     func getBluetooth() throws -> Bool {
+        throttle()
         try port.write(Data("BT\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseBTResponse(line) ?? false
     }
 
     func setBluetooth(_ on: Bool) throws {
+        throttle()
         try port.write(Data("BT \(on ? 1 : 0)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -714,12 +838,14 @@ final class THD75LiveConnection: @unchecked Sendable {
     // MARK: - TNC Baud Rate (AS command)
 
     func getTNCBaudRate() throws -> UInt8 {
+        throttle()
         try port.write(Data("AS\r".utf8))
         let line = try readCAT(timeout: 1.0)
         return THD75LiveConnection.parseASResponse(line) ?? 0
     }
 
     func setTNCBaudRate(_ rate: UInt8) throws {
+        throttle()
         try port.write(Data("AS \(rate)\r".utf8))
         _ = try? readCAT(timeout: 1.0)
     }
@@ -730,6 +856,7 @@ final class THD75LiveConnection: @unchecked Sendable {
     func getRadioInfo() throws -> RadioInfoState {
         var info = RadioInfoState()
 
+        throttle()
         try port.write(Data("AE\r".utf8))
         if let line = try? readCAT(timeout: 1.0),
            let ae = THD75LiveConnection.parseAEResponse(line) {
@@ -737,21 +864,25 @@ final class THD75LiveConnection: @unchecked Sendable {
             info.modelVariant  = ae.model
         }
 
+        throttle()
         try port.write(Data("FV\r".utf8))
         if let line = try? readCAT(timeout: 1.0) {
             info.firmwareVersion = THD75LiveConnection.parseFVResponse(line) ?? ""
         }
 
+        throttle()
         try port.write(Data("CS\r".utf8))
         if let line = try? readCAT(timeout: 1.0) {
             info.callsign = THD75LiveConnection.parseCSResponse(line) ?? ""
         }
 
+        throttle()
         try port.write(Data("RT\r".utf8))
         if let line = try? readCAT(timeout: 1.0) {
             info.clockString = THD75LiveConnection.parseRTResponse(line) ?? ""
         }
 
+        throttle()
         try port.write(Data("GP\r".utf8))
         if let line = try? readCAT(timeout: 1.0),
            let gp = THD75LiveConnection.parseGPResponse(line) {
@@ -759,6 +890,7 @@ final class THD75LiveConnection: @unchecked Sendable {
             info.gpsMode    = gp.mode
         }
 
+        throttle()
         try port.write(Data("GS\r".utf8))
         if let line = try? readCAT(timeout: 1.0) {
             info.gpsFixed = THD75LiveConnection.parseGSResponse(line) ?? false
@@ -789,10 +921,11 @@ final class THD75LiveConnection: @unchecked Sendable {
 
 extension THD75LiveConnection {
 
-    static func asyncConnect(portPath: String) async throws -> THD75LiveConnection {
+    /// Connect via serial port (USB or legacy Bluetooth virtual port).
+    static func asyncConnect(portPath: String, model: RadioModel = .d74) async throws -> THD75LiveConnection {
         try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
-                let conn = THD75LiveConnection(portPath: portPath)
+                let conn = THD75LiveConnection(portPath: portPath, model: model)
                 do {
                     try conn.connect()
                     cont.resume(returning: conn)
@@ -801,6 +934,35 @@ extension THD75LiveConnection {
                 }
             }
         }
+    }
+
+    /// Connect via direct RFCOMM (Bluetooth — bypasses broken macOS serial driver).
+    ///
+    /// IOBluetooth requires RFCOMM channels to be opened on a thread with a
+    /// CFRunLoop (the main thread). We open the port here on MainActor, then
+    /// dispatch the blocking CAT handshake (ID + AI) to a background queue.
+    @MainActor
+    static func asyncConnectRFCOMM(address: String, model: RadioModel = .d75) async throws -> THD75LiveConnection {
+        let conn = THD75LiveConnection(rfcommAddress: address, model: model)
+
+        // Open RFCOMM on the main thread where CFRunLoop lives.
+        // This ensures delegate callbacks (rfcommChannelData) will fire.
+        try conn.port.open(baudRate: 9600, hardwareFlowControl: false, twoStopBits: false)
+
+        // Run the blocking CAT handshake (ID, AI) on a background thread.
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try conn.connectAfterOpen()
+                    cont.resume()
+                } catch {
+                    conn.port.close()
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+
+        return conn
     }
 
     func asyncGetVFOState(vfo: UInt8 = 0) async throws -> LiveRadioState {

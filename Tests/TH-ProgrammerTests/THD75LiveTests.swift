@@ -125,14 +125,18 @@ final class THD75LiveTests: XCTestCase {
         s.vfo = 0
         s.frequencyHz = 146_520_000
         s.mode = 0  // FM
-        XCTAssertTrue(s.foCommand.hasSuffix(",0"))
+        // 21-field format: mode is field [5], verify round-trip
+        let parsed = LiveRadioState(foResponse: s.foCommand)
+        XCTAssertEqual(parsed?.mode, 0)
     }
 
     func testBuildFOCommand_modeDV() {
         var s = LiveRadioState()
         s.frequencyHz = 145_670_000
         s.mode = 1  // DV
-        XCTAssertTrue(s.foCommand.hasSuffix(",1"))
+        // 21-field format: mode is field [5], verify round-trip
+        let parsed = LiveRadioState(foResponse: s.foCommand)
+        XCTAssertEqual(parsed?.mode, 1)
     }
 
     func testFOCommandRoundTrip_frequency() {
@@ -637,5 +641,60 @@ final class THD75LiveTests: XCTestCase {
         let pos = NMEAPosition(latitude: 32.7157, longitude: -97.0730,
                                speedKnots: 3.4, trackDegrees: 0)
         XCTAssertEqual(pos.speedString, "3.4 kn")
+    }
+
+    // MARK: - Full 21-field FO response (real D75 wire format)
+
+    // Real D75 response: 146.520 FM simplex, no tone, no cross-tone, no reverse
+    private let realD75FO = "FO 0,0146520000,0000600000,0,0,0,0,0,0,0,0,0,0,0,08,08,000,0,CQCQCQ  ,0,00"
+
+    func testParseRealD75FO_frequency() {
+        let state = LiveRadioState(foResponse: realD75FO)
+        XCTAssertNotNil(state)
+        XCTAssertEqual(state?.frequencyHz, 146_520_000)
+    }
+
+    func testParseRealD75FO_txOffset() {
+        let state = LiveRadioState(foResponse: realD75FO)
+        XCTAssertEqual(state?.offsetHz, 600_000)
+    }
+
+    func testParseRealD75FO_mode() {
+        let state = LiveRadioState(foResponse: realD75FO)
+        XCTAssertEqual(state?.mode, 0) // FM
+    }
+
+    func testParseRealD75FO_shiftSimplex() {
+        let state = LiveRadioState(foResponse: realD75FO)
+        XCTAssertEqual(state?.shift, 0)
+    }
+
+    func testParseRealD75FO_urcall() {
+        let state = LiveRadioState(foResponse: realD75FO)
+        XCTAssertEqual(state?.dstarURCall, "CQCQCQ  ")
+    }
+
+    func testParseRealD75FO_DVWithRepeater() {
+        let raw = "FO 0,0145670000,0000600000,0,0,1,0,0,0,0,0,0,0,1,08,08,000,0,CQCQCQ  ,0,00"
+        let state = LiveRadioState(foResponse: raw)
+        XCTAssertEqual(state?.mode, 1)
+        XCTAssertEqual(state?.shift, 1)
+        XCTAssertEqual(state?.dstarURCall, "CQCQCQ  ")
+    }
+
+    func testParseRealD75FO_negativeShiftWithCTCSS() {
+        let raw = "FO 0,0146880000,0000600000,0,0,0,0,0,0,1,0,0,0,2,08,12,000,0,CQCQCQ  ,0,00"
+        let state = LiveRadioState(foResponse: raw)
+        XCTAssertEqual(state?.shift, 2)
+        XCTAssertTrue(state?.ctcssEnabled ?? false)
+        XCTAssertEqual(state?.ctcssIndex, 12)
+        XCTAssertEqual(state?.offsetHz, 600_000)
+    }
+
+    func testParseLegacy13FieldFO_stillWorks() {
+        let legacy = "FO 0,0146520000,00,0,0,0,0,08,08,000,0,00600000,0"
+        let state = LiveRadioState(foResponse: legacy)
+        XCTAssertNotNil(state)
+        XCTAssertEqual(state?.frequencyHz, 146_520_000)
     }
 }

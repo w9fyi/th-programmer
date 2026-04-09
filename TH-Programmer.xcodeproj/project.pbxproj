@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01A25D41EB02195D4C993DB8 /* URCALLCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22258998494E1EF056E80F97 /* URCALLCommandTests.swift */; };
 		04F2FEE8441C4B00787562DF /* WeatherChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062F46E3698C74398933FD0B /* WeatherChannelView.swift */; };
 		05A72FAC8332307A99F87C87 /* SerialPortDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0AA194BFD186E02ED8A7371 /* SerialPortDiscoveryTests.swift */; };
 		05F1EE4A0D9D320D58AC3970 /* RadioSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF5B04F8227AAE6DF304A5EC /* RadioSettingsView.swift */; };
@@ -19,12 +20,14 @@
 		164E7757B1392C60F2A58481 /* ReflectorClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4F6E96878342FCCF0B4A13 /* ReflectorClientProtocol.swift */; };
 		1733B82ED144766BBF76FD27 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCBF88117137CD84544B1C47 /* FavoritesManager.swift */; };
 		1EEB7B8375CC44C71A4FFA50 /* DExtraClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A396A50E8532099A21101FF /* DExtraClient.swift */; };
+		1F9C6C26037FE5EAACF60079 /* DExtraFixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AAE025D7192A27D3165F0F4 /* DExtraFixTests.swift */; };
 		1FF4AF875B2A4B9EC70580F2 /* DExtraProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E7CEC04673436B0B1C14A25 /* DExtraProtocol.swift */; };
 		2184050685DD42FE15D7628F /* ReflectorHostLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = D95CE58190A0B3B4D74FB0EB /* ReflectorHostLookup.swift */; };
 		28A3278371007726848854E9 /* TH_ProgrammerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3DC727B0C0128D9BE66540B /* TH_ProgrammerApp.swift */; };
 		2CC86C6DAE35F46165931EF2 /* MMDVMParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47B22C18890A445818921CE9 /* MMDVMParser.swift */; };
 		336DBFFB0C7D536094C214AE /* ScanEdgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1078AF4F0AF42D5EAFC433D /* ScanEdgeView.swift */; };
 		341151DF610D61B84E6F35A6 /* imbe7200x4400.c in Sources */ = {isa = PBXBuildFile; fileRef = 2E66EDA9A2F3CEF572E0CCBC /* imbe7200x4400.c */; settings = {COMPILER_FLAGS = "-w"; }; };
+		34843841A9AC2245E27A2C31 /* quantize.c in Sources */ = {isa = PBXBuildFile; fileRef = 407A601752BDBC2BA354C796 /* quantize.c */; settings = {COMPILER_FLAGS = "-w"; }; };
 		3FDE74512FEF21B01AFDC380 /* HotspotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48199DA4CFE7A72EF57D497 /* HotspotView.swift */; };
 		41AC195A582C5F5994C79DA2 /* AMBECodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278BDC1B1B7C1E652732CF4E /* AMBECodec.swift */; };
 		435809C07347CE9A782CEF25 /* ambe3600x2400.c in Sources */ = {isa = PBXBuildFile; fileRef = 33ADF2DFB160B97F2243BC2B /* ambe3600x2400.c */; settings = {COMPILER_FLAGS = "-w"; }; };
@@ -34,6 +37,8 @@
 		4D9F6C9E6A3AFE43A0940935 /* DRRepeaterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8239947C6081AF47E40E60EA /* DRRepeaterView.swift */; };
 		4DDC19F9A2EFF72EE0186BBD /* DPlusClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D696CA474D2E08A0DF2BC604 /* DPlusClient.swift */; };
 		534BE35A6C489773896B5FEA /* ChannelEditSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 156E2B55627E19B718381055 /* ChannelEditSheet.swift */; };
+		5B04FD8C2B8494BCAB2203B1 /* RadioPort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A0E3E4D8940CFD96100B672 /* RadioPort.swift */; };
+		5C70A5D7AEF53B3BFF5DCB59 /* ambe_encode.c in Sources */ = {isa = PBXBuildFile; fileRef = 1AF9EB3C912442F9CB83E2F8 /* ambe_encode.c */; settings = {COMPILER_FLAGS = "-w"; }; };
 		5E4136534F1AD0CCAC2B1143 /* HeardStation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3370B543091F9AD67A31CB9E /* HeardStation.swift */; };
 		5EC1030BEDE1B9F3777C7B8C /* RadioConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3223836CB9EB7EEB6DEEE2DD /* RadioConstants.swift */; };
 		60CF72359936CF0217F11A7D /* DSTARSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A16782094B82184D4923A33 /* DSTARSettingsView.swift */; };
@@ -51,6 +56,7 @@
 		802CA79E195A9B302868BFF2 /* MMDVMTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23835E758FBA2252B0D9F444 /* MMDVMTransport.swift */; };
 		80DCD3621B22FA63CE564BDD /* DCSProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF74353C616F7A519D8D93AE /* DCSProtocol.swift */; };
 		8159C2DA806F77902E98A0B9 /* DVFrameDCSTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43B99E301D89E237D23127E /* DVFrameDCSTests.swift */; };
+		886D5CF710ED727ACA566FC6 /* bitpack.c in Sources */ = {isa = PBXBuildFile; fileRef = F5B2BCBF47137A4AE702E92C /* bitpack.c */; settings = {COMPILER_FLAGS = "-w"; }; };
 		88C2264E3DDA3A6E7D413FA9 /* ReflectorFavorite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CCB47A77FE83E16BCB4A10C /* ReflectorFavorite.swift */; };
 		89207E9075DA46020FCC178D /* THD75LiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0752BE7C4DED2F0811BAF740 /* THD75LiveTests.swift */; };
 		8B0AD2FE85F0C8299E919EFE /* APRSSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C352622C78641E5200E9FE42 /* APRSSettingsView.swift */; };
@@ -61,10 +67,15 @@
 		92C237D560CBF1247877DEDD /* AMBEDeinterleaveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8556614B2B656025DAD5F7DC /* AMBEDeinterleaveTests.swift */; };
 		95E16D8FDBB09736AE66B176 /* CommunicationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4FDD994784BC0C05312E68E /* CommunicationSettingsView.swift */; };
 		9B336A7FC8532B3FA18A50A6 /* LiveControlSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAF5E181DED3F7746B432A06 /* LiveControlSheet.swift */; };
+		9CA3AE204D5900E65CEF2FAE /* fft_util.c in Sources */ = {isa = PBXBuildFile; fileRef = EB4A511BDF42E568A75E10D7 /* fft_util.c */; settings = {COMPILER_FLAGS = "-w"; }; };
+		9D6E9CCFF2D827CDC3DFC99D /* URCALLCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAADAFDDC75038AD4B39D663 /* URCALLCommand.swift */; };
 		A09A78BF5618CBFDE3E76C50 /* ReflectorHostLookupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C5853D29BD147BD9005783 /* ReflectorHostLookupTests.swift */; };
 		A1DC532ABB63C7022DE35962 /* NewCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D0B44E95AFCD4222410E462 /* NewCommandTests.swift */; };
 		A265D998EF5B24DA2DE5172F /* AMBECodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 030E9D9A737F8240CD5ED343 /* AMBECodecTests.swift */; };
 		A5E246FA755798604508B899 /* ReflectorDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6834A7A798C9C3E9668A242 /* ReflectorDirectory.swift */; };
+		A7F11FD6ADA023F6FADF3045 /* BluetoothStabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13BE197B7CB8B0C2DEFED683 /* BluetoothStabilityTests.swift */; };
+		A905A4F2FACCD7433F0833DE /* vuv_classify.c in Sources */ = {isa = PBXBuildFile; fileRef = D8957A3A1E793A45160477A0 /* vuv_classify.c */; settings = {COMPILER_FLAGS = "-w"; }; };
+		A95D5663E1425DD9D7146843 /* RadioModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDFF46625172D2306972B25 /* RadioModel.swift */; };
 		AAF404503C0521A8A41D3445 /* AudioSourceMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE9F02AFFDB5AA1A0DB90F14 /* AudioSourceMode.swift */; };
 		B1E8A7225DA7E5008A9831F6 /* RepeaterEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7426888580A1AFF3C4CEDE14 /* RepeaterEntry.swift */; };
 		B20F760BF6D83018B2752A5F /* DVFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC1BD9C60292452144E9A7B /* DVFrameTests.swift */; };
@@ -76,15 +87,20 @@
 		BE63B949423FC256DA87B5F8 /* SlowDataDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCF1BB92EC4623718D2C87E /* SlowDataDecoderTests.swift */; };
 		BF35CC3CC8BB8F673426AB52 /* CallChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A1DD78A70A3FFE4BFBA301 /* CallChannelView.swift */; };
 		C150EC3E6411FD4DEF2714FE /* RadioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7DF9778C3926CC35CC3FB6 /* RadioStore.swift */; };
+		C42E23D2F67CF075FA39799C /* RFCOMMPort.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCA02E8C1A74109C049ED82 /* RFCOMMPort.swift */; };
 		C49AAE4D71FA486914C81A19 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F5EF6659B7CE212A67573E /* ContentView.swift */; };
 		C98F51B1CC517C39098C2D91 /* AppSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D08622879627C35DE156292F /* AppSettingsView.swift */; };
+		CB6A75828959937F143330FF /* spectral.c in Sources */ = {isa = PBXBuildFile; fileRef = 3F87BA25A977FA6AE7EEB580 /* spectral.c */; settings = {COMPILER_FLAGS = "-w"; }; };
 		CBFB36F0BB71B96EA2771464 /* ChannelMemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29587BA7D68B6D8199603970 /* ChannelMemoryTests.swift */; };
 		CCFEC3239DB1B325F9272B55 /* ambe3600x2450.c in Sources */ = {isa = PBXBuildFile; fileRef = 4C8B72BB1C77366F5F3258AD /* ambe3600x2450.c */; settings = {COMPILER_FLAGS = "-w"; }; };
 		CD9846D7DDB5006B6D4247E1 /* RadioSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAC1592CC6EF270112A1F1C /* RadioSettingsTests.swift */; };
 		CDA11095A374C76DA805A6C4 /* ReflectorDirectorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D30395625DB5E54A5B74BAC /* ReflectorDirectorySheet.swift */; };
+		D082922750FF08C34CA65A2D /* AnnouncementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD57AA3D251F3BA9479212EA /* AnnouncementTests.swift */; };
+		D4186DC1839C122E6AED4F98 /* AMBEEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E852FBAC8A9551632A91425 /* AMBEEncoderTests.swift */; };
 		D9674ACF2C4FCFD9D328259B /* MMDVMSerialTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03A5ACA9DD409F6D45DA900 /* MMDVMSerialTransport.swift */; };
 		D9A46FCB8E18FE3AC3BC1A3D /* BluetoothManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1F7829B3B1E38A9866C1E7 /* BluetoothManager.swift */; };
 		D9D1C4F29E8025084A788CCA /* MMDVMParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44A69C66CBBABA4EB91E1AF /* MMDVMParserTests.swift */; };
+		DD61F072DF71B21FA2581381 /* AnnouncementPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8678FC9DBB005AF2F3D095 /* AnnouncementPlayer.swift */; };
 		DD9E2609DE97976373A06D9C /* BluetoothManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0D4351896BA629F72DD5A9 /* BluetoothManagerTests.swift */; };
 		DF36D9264E81B99D434C342D /* mbelib.c in Sources */ = {isa = PBXBuildFile; fileRef = 39EBC5F98CCA5AA17952A720 /* mbelib.c */; settings = {COMPILER_FLAGS = "-w"; }; };
 		DF7A1ADDF6C487DA0415F2B1 /* MMDVMBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDD084255725B53C80CDEB75 /* MMDVMBridge.swift */; };
@@ -92,8 +108,10 @@
 		EAE9ECCBAB14C66AAE8F1ADE /* PosixUDPSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A00423B6162F7B560BA2D7 /* PosixUDPSocket.swift */; };
 		EC54718B56888FD2D827960C /* AudioRingBuffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA705A20F485A07E7622358 /* AudioRingBuffer.swift */; };
 		F11EFE26D73D5DBF3BDFE3EF /* MemoryMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3999E29455D13C2A7E92C142 /* MemoryMap.swift */; };
+		F24D1B38AF5759E885F0A0F7 /* pitch_est.c in Sources */ = {isa = PBXBuildFile; fileRef = 5E5FCE47DBBAEBE97081F671 /* pitch_est.c */; settings = {COMPILER_FLAGS = "-w"; }; };
 		F86080CBA6A65A7F999E3B42 /* DVFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC15414932F90BBDAB7AB22C /* DVFrame.swift */; };
 		F9D78942673BF9DC497E0C03 /* ChannelEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DAB9446A358BAAAD1C8397C /* ChannelEditView.swift */; };
+		FA58F18B939275932FC8AB9A /* AnnouncementSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CCECF34254BA304D659658 /* AnnouncementSender.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,24 +131,35 @@
 		09EF5809A5B8D07384FBDE09 /* mbelib.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mbelib.h; sourceTree = "<group>"; };
 		0A666BC4A74047CE7804AFF4 /* ReflectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectorView.swift; sourceTree = "<group>"; };
 		0F2286E8053D4DDD65939EF7 /* AudioDeviceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDeviceManager.swift; sourceTree = "<group>"; };
+		12DF3775AEEA9DC4C4242695 /* ambe_encode.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ambe_encode.h; sourceTree = "<group>"; };
+		13BE197B7CB8B0C2DEFED683 /* BluetoothStabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothStabilityTests.swift; sourceTree = "<group>"; };
 		156E2B55627E19B718381055 /* ChannelEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelEditSheet.swift; sourceTree = "<group>"; };
+		1AF9EB3C912442F9CB83E2F8 /* ambe_encode.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ambe_encode.c; sourceTree = "<group>"; };
 		1D30395625DB5E54A5B74BAC /* ReflectorDirectorySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectorDirectorySheet.swift; sourceTree = "<group>"; };
 		1F121863CEB2219C450634C9 /* DCSProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DCSProtocolTests.swift; sourceTree = "<group>"; };
 		209CB45ECA780828F2ACE530 /* ReflectorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectorStore.swift; sourceTree = "<group>"; };
+		22258998494E1EF056E80F97 /* URCALLCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URCALLCommandTests.swift; sourceTree = "<group>"; };
 		23835E758FBA2252B0D9F444 /* MMDVMTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MMDVMTransport.swift; sourceTree = "<group>"; };
 		249E80DAF59561AC0C356A8E /* DPlusProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DPlusProtocol.swift; sourceTree = "<group>"; };
 		278BDC1B1B7C1E652732CF4E /* AMBECodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AMBECodec.swift; sourceTree = "<group>"; };
 		27F9DA30B15F36513AD817EE /* RadioSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioSettings.swift; sourceTree = "<group>"; };
 		29587BA7D68B6D8199603970 /* ChannelMemoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelMemoryTests.swift; sourceTree = "<group>"; };
+		2AAE025D7192A27D3165F0F4 /* DExtraFixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DExtraFixTests.swift; sourceTree = "<group>"; };
 		2D0B44E95AFCD4222410E462 /* NewCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCommandTests.swift; sourceTree = "<group>"; };
 		2DAB9446A358BAAAD1C8397C /* ChannelEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelEditView.swift; sourceTree = "<group>"; };
 		2E66EDA9A2F3CEF572E0CCBC /* imbe7200x4400.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = imbe7200x4400.c; sourceTree = "<group>"; };
+		2E852FBAC8A9551632A91425 /* AMBEEncoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AMBEEncoderTests.swift; sourceTree = "<group>"; };
 		3223836CB9EB7EEB6DEEE2DD /* RadioConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioConstants.swift; sourceTree = "<group>"; };
 		3370B543091F9AD67A31CB9E /* HeardStation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeardStation.swift; sourceTree = "<group>"; };
 		33ADF2DFB160B97F2243BC2B /* ambe3600x2400.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ambe3600x2400.c; sourceTree = "<group>"; };
 		3999E29455D13C2A7E92C142 /* MemoryMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMap.swift; sourceTree = "<group>"; };
 		39EBC5F98CCA5AA17952A720 /* mbelib.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = mbelib.c; sourceTree = "<group>"; };
+		3A0E3E4D8940CFD96100B672 /* RadioPort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioPort.swift; sourceTree = "<group>"; };
+		3BCA02E8C1A74109C049ED82 /* RFCOMMPort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFCOMMPort.swift; sourceTree = "<group>"; };
+		3CDFF46625172D2306972B25 /* RadioModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioModel.swift; sourceTree = "<group>"; };
 		3D9679CF5DE0E1903E794712 /* config.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = config.h; sourceTree = "<group>"; };
+		3F87BA25A977FA6AE7EEB580 /* spectral.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = spectral.c; sourceTree = "<group>"; };
+		407A601752BDBC2BA354C796 /* quantize.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = quantize.c; sourceTree = "<group>"; };
 		422C953119F022DCAEF4AE83 /* DPlusAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DPlusAuthenticator.swift; sourceTree = "<group>"; };
 		46F5EF6659B7CE212A67573E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		47B22C18890A445818921CE9 /* MMDVMParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MMDVMParser.swift; sourceTree = "<group>"; };
@@ -138,7 +167,10 @@
 		4C8B72BB1C77366F5F3258AD /* ambe3600x2450.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ambe3600x2450.c; sourceTree = "<group>"; };
 		4CF1ED748E3BCEEE73D70E56 /* GatewayMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayMode.swift; sourceTree = "<group>"; };
 		54442BEB7969A269ECC7E734 /* TH-ProgrammerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TH-ProgrammerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B823F44FEC4517F9EDA8D29 /* pitch_est.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = pitch_est.h; sourceTree = "<group>"; };
+		5B8678FC9DBB005AF2F3D095 /* AnnouncementPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementPlayer.swift; sourceTree = "<group>"; };
 		5CCB47A77FE83E16BCB4A10C /* ReflectorFavorite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectorFavorite.swift; sourceTree = "<group>"; };
+		5E5FCE47DBBAEBE97081F671 /* pitch_est.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = pitch_est.c; sourceTree = "<group>"; };
 		5E7CEC04673436B0B1C14A25 /* DExtraProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DExtraProtocol.swift; sourceTree = "<group>"; };
 		618F77202B883241885B943E /* TerminalModeProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalModeProtocol.swift; sourceTree = "<group>"; };
 		63CF3DA91605E63CDBD43E40 /* THD75LiveConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = THD75LiveConnection.swift; sourceTree = "<group>"; };
@@ -146,6 +178,7 @@
 		69D5A8C36ABC0CC8CB32CBBD /* MMDVMProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MMDVMProtocol.swift; sourceTree = "<group>"; };
 		69E485B095268EC19FA1397A /* AudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioEngine.swift; sourceTree = "<group>"; };
 		6BC1BD9C60292452144E9A7B /* DVFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DVFrameTests.swift; sourceTree = "<group>"; };
+		6C44CD1DFFB362CAC86E269B /* fft_util.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = fft_util.h; sourceTree = "<group>"; };
 		6F5BE7C069A9C9DBE16018A0 /* SlowDataDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlowDataDecoder.swift; sourceTree = "<group>"; };
 		7426888580A1AFF3C4CEDE14 /* RepeaterEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepeaterEntry.swift; sourceTree = "<group>"; };
 		7C0D4351896BA629F72DD5A9 /* BluetoothManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothManagerTests.swift; sourceTree = "<group>"; };
@@ -176,6 +209,8 @@
 		BDD084255725B53C80CDEB75 /* MMDVMBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MMDVMBridge.swift; sourceTree = "<group>"; };
 		C352622C78641E5200E9FE42 /* APRSSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APRSSettingsView.swift; sourceTree = "<group>"; };
 		C3BDBD2AADD87916ECFEC60C /* SerialPortDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialPortDiscovery.swift; sourceTree = "<group>"; };
+		C5CCECF34254BA304D659658 /* AnnouncementSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementSender.swift; sourceTree = "<group>"; };
+		C76CA372F929392C07A85A13 /* ambe_tables_extern.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ambe_tables_extern.h; sourceTree = "<group>"; };
 		CAF5E181DED3F7746B432A06 /* LiveControlSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveControlSheet.swift; sourceTree = "<group>"; };
 		CE76230E3CCB98F5D825FACB /* RFCOMMTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFCOMMTransport.swift; sourceTree = "<group>"; };
 		CEAC1592CC6EF270112A1F1C /* RadioSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioSettingsTests.swift; sourceTree = "<group>"; };
@@ -185,9 +220,12 @@
 		D1631AA6D1E7EF61FE886ED4 /* TH-Programmer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TH-Programmer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		D2A00423B6162F7B560BA2D7 /* PosixUDPSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PosixUDPSocket.swift; sourceTree = "<group>"; };
 		D40EA98EE501075145E10D97 /* imbe7200x4400_const.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = imbe7200x4400_const.h; sourceTree = "<group>"; };
+		D446436C91B567059748F833 /* vuv_classify.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = vuv_classify.h; sourceTree = "<group>"; };
 		D44A69C66CBBABA4EB91E1AF /* MMDVMParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MMDVMParserTests.swift; sourceTree = "<group>"; };
 		D696CA474D2E08A0DF2BC604 /* DPlusClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DPlusClient.swift; sourceTree = "<group>"; };
+		D8957A3A1E793A45160477A0 /* vuv_classify.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = vuv_classify.c; sourceTree = "<group>"; };
 		D95CE58190A0B3B4D74FB0EB /* ReflectorHostLookup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectorHostLookup.swift; sourceTree = "<group>"; };
+		DB6DCFABC3D289B8A37770CE /* spectral.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = spectral.h; sourceTree = "<group>"; };
 		DCBF88117137CD84544B1C47 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
 		DE9F02AFFDB5AA1A0DB90F14 /* AudioSourceMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSourceMode.swift; sourceTree = "<group>"; };
 		DF5B04F8227AAE6DF304A5EC /* RadioSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadioSettingsView.swift; sourceTree = "<group>"; };
@@ -195,15 +233,21 @@
 		E959FF1A326E962F78A83915 /* mbelib_const.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mbelib_const.h; sourceTree = "<group>"; };
 		EAA539CCF2611F23FE1AF04E /* THD75Connection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = THD75Connection.swift; sourceTree = "<group>"; };
 		EB0AAE5E6032B5CC116946C4 /* ecc_const.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ecc_const.h; sourceTree = "<group>"; };
+		EB4A511BDF42E568A75E10D7 /* fft_util.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = fft_util.c; sourceTree = "<group>"; };
+		EC23833EF128F4821AF2DD23 /* bitpack.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bitpack.h; sourceTree = "<group>"; };
 		F03A5ACA9DD409F6D45DA900 /* MMDVMSerialTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MMDVMSerialTransport.swift; sourceTree = "<group>"; };
 		F0AA194BFD186E02ED8A7371 /* SerialPortDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialPortDiscoveryTests.swift; sourceTree = "<group>"; };
 		F3077A7F80E896500A93C293 /* DExtraProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DExtraProtocolTests.swift; sourceTree = "<group>"; };
 		F4FDD994784BC0C05312E68E /* CommunicationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunicationSettingsView.swift; sourceTree = "<group>"; };
 		F53DB30CA52FEC47FE3A6B7D /* DCSClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DCSClient.swift; sourceTree = "<group>"; };
+		F5B2BCBF47137A4AE702E92C /* bitpack.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = bitpack.c; sourceTree = "<group>"; };
 		F6834A7A798C9C3E9668A242 /* ReflectorDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReflectorDirectory.swift; sourceTree = "<group>"; };
 		F8C7E87D08578B7A1BB19C41 /* TerminalModeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalModeClient.swift; sourceTree = "<group>"; };
 		F8E28B26C863334B10FF4239 /* LiveBluetoothTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBluetoothTests.swift; sourceTree = "<group>"; };
 		F9A1DD78A70A3FFE4BFBA301 /* CallChannelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallChannelView.swift; sourceTree = "<group>"; };
+		FAADAFDDC75038AD4B39D663 /* URCALLCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URCALLCommand.swift; sourceTree = "<group>"; };
+		FCF37D55B02FAA797D7C16CE /* quantize.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = quantize.h; sourceTree = "<group>"; };
+		FD57AA3D251F3BA9479212EA /* AnnouncementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnouncementTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -216,10 +260,20 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		0831635D833035CE3C12CF30 /* include */ = {
+			isa = PBXGroup;
+			children = (
+				12DF3775AEEA9DC4C4242695 /* ambe_encode.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
 		0974E16D75AC58E74496EF06 /* Audio */ = {
 			isa = PBXGroup;
 			children = (
 				278BDC1B1B7C1E652732CF4E /* AMBECodec.swift */,
+				5B8678FC9DBB005AF2F3D095 /* AnnouncementPlayer.swift */,
+				C5CCECF34254BA304D659658 /* AnnouncementSender.swift */,
 				0F2286E8053D4DDD65939EF7 /* AudioDeviceManager.swift */,
 				69E485B095268EC19FA1397A /* AudioEngine.swift */,
 				BAA705A20F485A07E7622358 /* AudioRingBuffer.swift */,
@@ -232,10 +286,14 @@
 			children = (
 				030E9D9A737F8240CD5ED343 /* AMBECodecTests.swift */,
 				8556614B2B656025DAD5F7DC /* AMBEDeinterleaveTests.swift */,
+				2E852FBAC8A9551632A91425 /* AMBEEncoderTests.swift */,
+				FD57AA3D251F3BA9479212EA /* AnnouncementTests.swift */,
 				9D7A05DB111C8589930F2EA5 /* AudioRingBufferTests.swift */,
 				7C0D4351896BA629F72DD5A9 /* BluetoothManagerTests.swift */,
+				13BE197B7CB8B0C2DEFED683 /* BluetoothStabilityTests.swift */,
 				29587BA7D68B6D8199603970 /* ChannelMemoryTests.swift */,
 				1F121863CEB2219C450634C9 /* DCSProtocolTests.swift */,
+				2AAE025D7192A27D3165F0F4 /* DExtraFixTests.swift */,
 				F3077A7F80E896500A93C293 /* DExtraProtocolTests.swift */,
 				BB9441C08EC601F0C4AABC39 /* DSTARSettingsTests.swift */,
 				E43B99E301D89E237D23127E /* DVFrameDCSTests.swift */,
@@ -249,6 +307,7 @@
 				F0AA194BFD186E02ED8A7371 /* SerialPortDiscoveryTests.swift */,
 				8DCF1BB92EC4623718D2C87E /* SlowDataDecoderTests.swift */,
 				0752BE7C4DED2F0811BAF740 /* THD75LiveTests.swift */,
+				22258998494E1EF056E80F97 /* URCALLCommandTests.swift */,
 			);
 			name = "TH-ProgrammerTests";
 			path = "Tests/TH-ProgrammerTests";
@@ -260,6 +319,29 @@
 				09EF5809A5B8D07384FBDE09 /* mbelib.h */,
 			);
 			path = include;
+			sourceTree = "<group>";
+		};
+		61FF6CEDCD3912FF4AA21D94 /* ambe_encoder */ = {
+			isa = PBXGroup;
+			children = (
+				1AF9EB3C912442F9CB83E2F8 /* ambe_encode.c */,
+				C76CA372F929392C07A85A13 /* ambe_tables_extern.h */,
+				F5B2BCBF47137A4AE702E92C /* bitpack.c */,
+				EC23833EF128F4821AF2DD23 /* bitpack.h */,
+				EB4A511BDF42E568A75E10D7 /* fft_util.c */,
+				6C44CD1DFFB362CAC86E269B /* fft_util.h */,
+				5E5FCE47DBBAEBE97081F671 /* pitch_est.c */,
+				5B823F44FEC4517F9EDA8D29 /* pitch_est.h */,
+				407A601752BDBC2BA354C796 /* quantize.c */,
+				FCF37D55B02FAA797D7C16CE /* quantize.h */,
+				3F87BA25A977FA6AE7EEB580 /* spectral.c */,
+				DB6DCFABC3D289B8A37770CE /* spectral.h */,
+				D8957A3A1E793A45160477A0 /* vuv_classify.c */,
+				D446436C91B567059748F833 /* vuv_classify.h */,
+				0831635D833035CE3C12CF30 /* include */,
+			);
+			name = ambe_encoder;
+			path = Sources/ambe_encoder;
 			sourceTree = "<group>";
 		};
 		67C0EFB3672B01226F830DD8 /* Reflector */ = {
@@ -332,6 +414,7 @@
 				3370B543091F9AD67A31CB9E /* HeardStation.swift */,
 				3999E29455D13C2A7E92C142 /* MemoryMap.swift */,
 				3223836CB9EB7EEB6DEEE2DD /* RadioConstants.swift */,
+				3CDFF46625172D2306972B25 /* RadioModel.swift */,
 				27F9DA30B15F36513AD817EE /* RadioSettings.swift */,
 				5CCB47A77FE83E16BCB4A10C /* ReflectorFavorite.swift */,
 				D0D84661A9CD96AD135470CF /* ReflectorTarget.swift */,
@@ -344,6 +427,8 @@
 			isa = PBXGroup;
 			children = (
 				BB1F7829B3B1E38A9866C1E7 /* BluetoothManager.swift */,
+				3A0E3E4D8940CFD96100B672 /* RadioPort.swift */,
+				3BCA02E8C1A74109C049ED82 /* RFCOMMPort.swift */,
 				9213AA3B67FE35CEA6FA7F27 /* SerialPort.swift */,
 				EAA539CCF2611F23FE1AF04E /* THD75Connection.swift */,
 				63CF3DA91605E63CDBD43E40 /* THD75LiveConnection.swift */,
@@ -380,6 +465,7 @@
 		ED6400797F45DBAF44B374C9 = {
 			isa = PBXGroup;
 			children = (
+				61FF6CEDCD3912FF4AA21D94 /* ambe_encoder */,
 				9C1121CA2322002FE658911D /* mbelib */,
 				6B7345D5F6C8BADFA0624472 /* TH-Programmer */,
 				0D0B1368BD46DB66E7595E78 /* TH-ProgrammerTests */,
@@ -397,6 +483,7 @@
 				23835E758FBA2252B0D9F444 /* MMDVMTransport.swift */,
 				CE76230E3CCB98F5D825FACB /* RFCOMMTransport.swift */,
 				C3BDBD2AADD87916ECFEC60C /* SerialPortDiscovery.swift */,
+				FAADAFDDC75038AD4B39D663 /* URCALLCommand.swift */,
 			);
 			path = MMDVM;
 			sourceTree = "<group>";
@@ -447,9 +534,10 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = 32AF066BC7082A2BD562EF44 /* Build configuration list for PBXProject "TH-Programmer" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -459,6 +547,7 @@
 			mainGroup = ED6400797F45DBAF44B374C9;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 020076774A9C27FF69FFBC2A /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -475,6 +564,8 @@
 			files = (
 				41AC195A582C5F5994C79DA2 /* AMBECodec.swift in Sources */,
 				8B0AD2FE85F0C8299E919EFE /* APRSSettingsView.swift in Sources */,
+				DD61F072DF71B21FA2581381 /* AnnouncementPlayer.swift in Sources */,
+				FA58F18B939275932FC8AB9A /* AnnouncementSender.swift in Sources */,
 				C98F51B1CC517C39098C2D91 /* AppSettingsView.swift in Sources */,
 				45BD05B824C5EDE144D6F634 /* AudioDeviceManager.swift in Sources */,
 				6E27A5C26391DAD776B12474 /* AudioEngine.swift in Sources */,
@@ -510,8 +601,11 @@
 				802CA79E195A9B302868BFF2 /* MMDVMTransport.swift in Sources */,
 				F11EFE26D73D5DBF3BDFE3EF /* MemoryMap.swift in Sources */,
 				EAE9ECCBAB14C66AAE8F1ADE /* PosixUDPSocket.swift in Sources */,
+				C42E23D2F67CF075FA39799C /* RFCOMMPort.swift in Sources */,
 				B7C69B6883BA28199AC9F6B2 /* RFCOMMTransport.swift in Sources */,
 				5EC1030BEDE1B9F3777C7B8C /* RadioConstants.swift in Sources */,
+				A95D5663E1425DD9D7146843 /* RadioModel.swift in Sources */,
+				5B04FD8C2B8494BCAB2203B1 /* RadioPort.swift in Sources */,
 				63ABB9D7293D05F9C1FF1750 /* RadioSettings.swift in Sources */,
 				05F1EE4A0D9D320D58AC3970 /* RadioSettingsView.swift in Sources */,
 				C150EC3E6411FD4DEF2714FE /* RadioStore.swift in Sources */,
@@ -534,13 +628,21 @@
 				28A3278371007726848854E9 /* TH_ProgrammerApp.swift in Sources */,
 				68597C880043C2C49BBDACE3 /* TerminalModeClient.swift in Sources */,
 				164E3D0321F3827A9D18E3EF /* TerminalModeProtocol.swift in Sources */,
+				9D6E9CCFF2D827CDC3DFC99D /* URCALLCommand.swift in Sources */,
 				8D086BE5EB965CD5B876202C /* USBRadioDetector.swift in Sources */,
 				04F2FEE8441C4B00787562DF /* WeatherChannelView.swift in Sources */,
 				435809C07347CE9A782CEF25 /* ambe3600x2400.c in Sources */,
 				CCFEC3239DB1B325F9272B55 /* ambe3600x2450.c in Sources */,
+				5C70A5D7AEF53B3BFF5DCB59 /* ambe_encode.c in Sources */,
+				886D5CF710ED727ACA566FC6 /* bitpack.c in Sources */,
 				47AA6D92862CFBA02A9F5D3C /* ecc.c in Sources */,
+				9CA3AE204D5900E65CEF2FAE /* fft_util.c in Sources */,
 				341151DF610D61B84E6F35A6 /* imbe7200x4400.c in Sources */,
 				DF36D9264E81B99D434C342D /* mbelib.c in Sources */,
+				F24D1B38AF5759E885F0A0F7 /* pitch_est.c in Sources */,
+				34843841A9AC2245E27A2C31 /* quantize.c in Sources */,
+				CB6A75828959937F143330FF /* spectral.c in Sources */,
+				A905A4F2FACCD7433F0833DE /* vuv_classify.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -550,10 +652,14 @@
 			files = (
 				A265D998EF5B24DA2DE5172F /* AMBECodecTests.swift in Sources */,
 				92C237D560CBF1247877DEDD /* AMBEDeinterleaveTests.swift in Sources */,
+				D4186DC1839C122E6AED4F98 /* AMBEEncoderTests.swift in Sources */,
+				D082922750FF08C34CA65A2D /* AnnouncementTests.swift in Sources */,
 				BB8E999F0D87429F5BC9D880 /* AudioRingBufferTests.swift in Sources */,
 				DD9E2609DE97976373A06D9C /* BluetoothManagerTests.swift in Sources */,
+				A7F11FD6ADA023F6FADF3045 /* BluetoothStabilityTests.swift in Sources */,
 				CBFB36F0BB71B96EA2771464 /* ChannelMemoryTests.swift in Sources */,
 				46387DA490FC117EC49D5DA5 /* DCSProtocolTests.swift in Sources */,
+				1F9C6C26037FE5EAACF60079 /* DExtraFixTests.swift in Sources */,
 				68C94556B3955D204BAC1334 /* DExtraProtocolTests.swift in Sources */,
 				72D1B2E8509D544B0F2A64D3 /* DSTARSettingsTests.swift in Sources */,
 				8159C2DA806F77902E98A0B9 /* DVFrameDCSTests.swift in Sources */,
@@ -567,6 +673,7 @@
 				05A72FAC8332307A99F87C87 /* SerialPortDiscoveryTests.swift in Sources */,
 				BE63B949423FC256DA87B5F8 /* SlowDataDecoderTests.swift in Sources */,
 				89207E9075DA46020FCC178D /* THD75LiveTests.swift in Sources */,
+				01A25D41EB02195D4C993DB8 /* URCALLCommandTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -732,6 +839,8 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/Sources/mbelib",
 					"$(PROJECT_DIR)/Sources/mbelib/include",
+					"$(PROJECT_DIR)/Sources/ambe_encoder",
+					"$(PROJECT_DIR)/Sources/ambe_encoder/include",
 				);
 				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_CFBundleDisplayName = "TH-Programmer";
@@ -782,6 +891,8 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/Sources/mbelib",
 					"$(PROJECT_DIR)/Sources/mbelib/include",
+					"$(PROJECT_DIR)/Sources/ambe_encoder",
+					"$(PROJECT_DIR)/Sources/ambe_encoder/include",
 				);
 				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_CFBundleDisplayName = "TH-Programmer";
